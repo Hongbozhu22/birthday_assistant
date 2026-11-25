@@ -472,9 +472,12 @@ function App() {
 
       <header className="topbar">
         <a className="brand" href="/">
-          <span className="brand-mark" aria-hidden="true">
-            🎁
-          </span>
+          <img
+            className="brand-mark"
+            src="/brand-icon-96.png"
+            alt=""
+            aria-hidden="true"
+          />
           <span className="brand-text">
             <strong>礼物助手</strong>
             <small>Gift Assistant</small>
@@ -1332,9 +1335,12 @@ function AuthLoading() {
   return (
     <div className="auth-shell">
       <div className="auth-loading">
-        <span className="brand-mark auth-loading-mark" aria-hidden="true">
-          🎁
-        </span>
+        <img
+          className="brand-mark auth-loading-mark"
+          src="/brand-icon-96.png"
+          alt=""
+          aria-hidden="true"
+        />
         <div className="spinner" aria-hidden="true" />
         <p>正在确认登录状态…</p>
       </div>
@@ -1399,9 +1405,12 @@ function AuthScreen({ onAuthed, initialError }) {
       <div className="auth-wrap">
         <section className="auth-intro">
           <a className="brand" href="/">
-            <span className="brand-mark" aria-hidden="true">
-              🎁
-            </span>
+            <img
+              className="brand-mark"
+              src="/brand-icon-96.png"
+              alt=""
+              aria-hidden="true"
+            />
             <span className="brand-text">
               <strong>礼物助手</strong>
               <small>Gift Assistant</small>
