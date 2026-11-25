@@ -8,6 +8,8 @@ const PRICE_BUCKETS = [
   { key: '500+', label: '500 元以上', min: 500, max: Infinity }
 ]
 
+const SEARCH_HINTS = ['足球', '咖啡', '通勤', '露营', '香水', '高性价比']
+
 const WAREHOUSE_TABS = [
   { key: 'all', label: '全部' },
   { key: 'wishlist', label: '想送' },
@@ -67,6 +69,8 @@ function App() {
   })
 
   const [selectedTagIds, setSelectedTagIds] = useState(() => new Set())
+  const [keyword, setKeyword] = useState('')
+  const [typeKey, setTypeKey] = useState(null)
   const [expandedTags, setExpandedTags] = useState(() => new Set())
   const [priceKey, setPriceKey] = useState('all')
 
@@ -221,6 +225,19 @@ function App() {
     [allTags, selectedTagIds]
   )
 
+  const styleTags = useMemo(() => {
+    const styleRoot = allTags.find(
+      (tag) => tag.parentId == null && tag.name === '风格'
+    )
+    if (!styleRoot) return []
+    return allTags.filter((tag) => tag.parentId === styleRoot.id)
+  }, [allTags])
+
+  const activeTypeTag = useMemo(
+    () => styleTags.find((tag) => tag.id === typeKey) ?? null,
+    [styleTags, typeKey]
+  )
+
   const activePrice = useMemo(
     () => PRICE_BUCKETS.find((bucket) => bucket.key === priceKey) ?? PRICE_BUCKETS[0],
     [priceKey]
@@ -228,7 +245,30 @@ function App() {
 
   const filteredGifts = useMemo(() => {
     const gifts = giftsData?.gifts ?? []
+    const terms = keyword.trim().toLowerCase().split(/\s+/).filter(Boolean)
+
     return gifts.filter((gift) => {
+      if (terms.length > 0) {
+        const haystack = [
+          gift.name,
+          gift.category,
+          gift.fitFor,
+          gift.reason,
+          gift.priceLabel,
+          ...gift.tags.map((tag) => tag.name)
+        ]
+          .join(' ')
+          .toLowerCase()
+        if (!terms.every((term) => haystack.includes(term))) return false
+      }
+
+      if (
+        activeTypeTag &&
+        !gift.tags.some((giftTag) => giftTag.id === activeTypeTag.id)
+      ) {
+        return false
+      }
+
       const matchesTags = selectedTags.every((tag) =>
         gift.tags.some((giftTag) => giftTag.id === tag.id)
       )
@@ -239,7 +279,7 @@ function App() {
         gift.priceMin < activePrice.max && gift.priceMax > activePrice.min
       )
     })
-  }, [giftsData, selectedTags, activePrice])
+  }, [giftsData, selectedTags, activePrice, keyword, activeTypeTag])
 
   function showView(nextView) {
     setView(nextView)
@@ -277,6 +317,8 @@ function App() {
     setDetailGiftId(null)
     setSelectedTagIds(new Set())
     setPriceKey('all')
+    setKeyword('')
+    setTypeKey(null)
     setToast(null)
     setAccountOpen(false)
     setSelectedFriendId(null)
@@ -458,6 +500,8 @@ function App() {
   function clearFilters() {
     setSelectedTagIds(new Set())
     setPriceKey('all')
+    setKeyword('')
+    setTypeKey(null)
   }
 
   if (authStatus === 'checking') return <AuthLoading />
@@ -500,7 +544,7 @@ function App() {
               aria-current={view === 'search' || view === 'detail' ? 'page' : undefined}
               onClick={() => showView('search')}
             >
-              标签搜索
+              找礼物
             </button>
             <button
               type="button"
@@ -723,13 +767,13 @@ function App() {
             <section className="search-page">
               <div className="workbench-head">
                 <div>
-                  <h1>标签搜索</h1>
+                  <h1>找礼物</h1>
                   <p className="page-summary">
                     {giftsData.total} 件礼物 · {allTags.length} 个标签 · 已选{' '}
                     {selectedTagIds.size} 个
                   </p>
                 </div>
-                <span className="page-meta">标签取交集 · 品类参考价</span>
+                <span className="page-meta">关键词搜索 · 标签筛选 · 品类参考价</span>
               </div>
 
               <div className="search-hero">
@@ -852,6 +896,44 @@ function App() {
                 </aside>
 
                 <div className="search-results">
+                  <div className="search-input-row">
+                    <div className="search-input-wrap">
+                      <input
+                        className="search-input"
+                        type="search"
+                        value={keyword}
+                        placeholder="搜礼物、兴趣或场景，如 足球 / 咖啡 / 通勤"
+                        aria-label="搜索礼物"
+                        onChange={(event) => setKeyword(event.target.value)}
+                      />
+                      {keyword && (
+                        <button
+                          className="search-clear"
+                          type="button"
+                          aria-label="清空搜索"
+                          onClick={() => setKeyword('')}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {!keyword && (
+                    <div className="search-hints">
+                      <span>试试</span>
+                      {SEARCH_HINTS.map((hint) => (
+                        <button
+                          type="button"
+                          key={hint}
+                          onClick={() => setKeyword(hint)}
+                        >
+                          {hint}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="filter-bar">
                     <div className="price-filter">
                       <span className="filter-label">价格区间</span>
@@ -874,9 +956,54 @@ function App() {
                     </span>
                   </div>
 
-                  {selectedTags.length > 0 && (
+                  {styleTags.length > 0 && (
+                    <div className="type-filter">
+                      <span className="filter-label">礼物类型</span>
+                      <div className="type-chips">
+                        {styleTags.map((tag) => {
+                          const active = typeKey === tag.id
+                          return (
+                            <button
+                              type="button"
+                              key={tag.id}
+                              className={`type-chip ${active ? 'is-active' : ''}`}
+                              aria-pressed={active}
+                              onClick={() => setTypeKey(active ? null : tag.id)}
+                            >
+                              {tag.name}
+                              <span>{tagCounts.get(tag.id) ?? 0}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {(selectedTags.length > 0 || keyword || activeTypeTag) && (
                     <div className="selected-bar">
                       <span className="selected-label">已选</span>
+                      {keyword && (
+                        <button
+                          type="button"
+                          className="selected-chip"
+                          onClick={() => setKeyword('')}
+                          title="移除关键词"
+                        >
+                          关键词：{keyword}
+                          <span aria-hidden="true">×</span>
+                        </button>
+                      )}
+                      {activeTypeTag && (
+                        <button
+                          type="button"
+                          className="selected-chip"
+                          onClick={() => setTypeKey(null)}
+                          title="移除类型"
+                        >
+                          类型：{activeTypeTag.name}
+                          <span aria-hidden="true">×</span>
+                        </button>
+                      )}
                       {selectedTags.map((tag) => (
                         <button
                           type="button"
@@ -900,7 +1027,7 @@ function App() {
                   )}
 
                   <p className="filter-note">
-                    同时选中多个标签时取交集；参考价跨区间的礼物会出现在相邻区间。
+                    关键词会搜索名称、适合人群、推荐理由和标签；标签之间取交集，价格跨区间会出现在相邻区间。
                   </p>
 
                   {filteredGifts.length > 0 ? (
@@ -921,8 +1048,14 @@ function App() {
                       <span className="results-empty-emoji" aria-hidden="true">
                         🫙
                       </span>
-                      <h3>没有同时符合的礼物</h3>
-                      <p>试着减少一个标签，或放宽价格区间。</p>
+                      <h3>
+                        {keyword ? '没有找到相关礼物' : '没有同时符合的礼物'}
+                      </h3>
+                      <p>
+                        {keyword
+                          ? `没有找到“${keyword}”，换个词或减少筛选条件试试。`
+                          : '试着减少一个标签，或放宽价格区间。'}
+                      </p>
                       <button
                         className="button button-primary"
                         type="button"
@@ -965,7 +1098,7 @@ function App() {
                     <em>记住送过的</em>。
                   </h1>
                   <p className="search-lead">
-                    从标签搜索里收藏礼物；送出后标记为“已送”，并记下购买渠道和实际价格。
+                    从「找礼物」里收藏礼物；送出后标记为“已送”，并记下购买渠道和实际价格。
                     删除只做软删除，随时可以恢复。
                   </p>
                 </div>
@@ -1046,7 +1179,7 @@ function App() {
                   <p>
                     {warehouseTab === 'trash'
                       ? '从仓库删除的礼物会先放在这里，随时可以恢复。'
-                      : '去标签搜索里挑一件礼物，点卡片右上角的“收藏”。'}
+                      : '去「找礼物」里挑一件礼物，点卡片右上角的“收藏”。'}
                   </p>
                   {warehouseTab !== 'trash' && (
                     <button
@@ -1054,7 +1187,7 @@ function App() {
                       type="button"
                       onClick={() => showView('search')}
                     >
-                      去标签搜索收藏
+                      去找礼物收藏
                     </button>
                   )}
                 </div>
@@ -1079,13 +1212,13 @@ function App() {
                   🎁
                 </span>
                 <h3>没有找到这件礼物</h3>
-                <p>它可能已不在种子数据里，回到标签搜索重新选择吧。</p>
+                <p>它可能已不在种子数据里，回到「找礼物」重新选择吧。</p>
                 <button
                   className="button button-primary"
                   type="button"
                   onClick={() => showView('search')}
                 >
-                  返回标签搜索
+                  返回找礼物
                 </button>
               </div>
             )}
@@ -1814,7 +1947,7 @@ function GiftDetail({ gift, onBack, onToast }) {
   return (
     <section className="detail-page">
       <button className="back-button" type="button" onClick={onBack}>
-        <span aria-hidden="true">←</span> 返回标签搜索
+        <span aria-hidden="true">←</span> 返回找礼物
       </button>
 
       <div className="detail-hero">
