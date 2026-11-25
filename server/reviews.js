@@ -198,3 +198,34 @@ export function createReview(db, giftIdInput, input, userId) {
     throw error
   }
 }
+
+export function adminDeleteReview(db, reviewIdInput, actor) {
+  const reviewId = Number(reviewIdInput)
+  if (!Number.isInteger(reviewId) || reviewId <= 0) {
+    throw httpError(400, '评价 id 不正确')
+  }
+  if (!actor?.isAdmin) {
+    throw httpError(403, '只有管理员可以删除评价')
+  }
+
+  const row = db
+    .prepare('SELECT id, gift_id, image_path FROM reviews WHERE id = ?')
+    .get(reviewId)
+  if (!row) throw httpError(404, '评价不存在')
+
+  db.prepare('DELETE FROM reviews WHERE id = ?').run(reviewId)
+
+  if (row.image_path) {
+    const filePath = path.join(UPLOADS_DIR, path.basename(row.image_path))
+    try {
+      fs.rmSync(filePath, { force: true })
+    } catch {
+      // 图片可能已被手动清理，不影响评价删除
+    }
+  }
+
+  return {
+    giftId: row.gift_id,
+    summary: getReviewSummary(db, row.gift_id)
+  }
+}

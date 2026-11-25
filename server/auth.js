@@ -87,6 +87,7 @@ function mapUser(row) {
   return {
     id: row.id,
     email: row.email,
+    isAdmin: Boolean(row.is_admin),
     createdAt: row.created_at
   }
 }
@@ -111,8 +112,8 @@ export async function registerUser(db, emailValue, passwordValue) {
   db.exec('BEGIN')
   try {
     const result = db
-      .prepare('INSERT INTO users (email, password_hash) VALUES (?, ?)')
-      .run(email, passwordHash)
+      .prepare('INSERT INTO users (email, password_hash, is_admin) VALUES (?, ?, ?)')
+      .run(email, passwordHash, userCount === 0 ? 1 : 0)
     const userId = Number(result.lastInsertRowid)
     if (userCount === 0) {
       // 单用户版本的旧数据归入第一个注册账号
@@ -121,7 +122,7 @@ export async function registerUser(db, emailValue, passwordValue) {
     db.exec('COMMIT')
 
     return mapUser(
-      db.prepare('SELECT id, email, created_at FROM users WHERE id = ?').get(userId)
+      db.prepare('SELECT id, email, is_admin, created_at FROM users WHERE id = ?').get(userId)
     )
   } catch (error) {
     db.exec('ROLLBACK')
@@ -263,7 +264,7 @@ export function getSessionUser(db, req) {
 
   const row = db
     .prepare(
-      `SELECT u.id, u.email, u.created_at
+      `SELECT u.id, u.email, u.is_admin, u.created_at
          FROM sessions s
          JOIN users u ON u.id = s.user_id
         WHERE s.token_hash = ?

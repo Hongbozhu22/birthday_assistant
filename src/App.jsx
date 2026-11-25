@@ -10,6 +10,10 @@ const PRICE_BUCKETS = [
 
 const SEARCH_HINTS = ['足球', '咖啡', '通勤', '露营', '香水', '高性价比']
 
+const RECIPIENT_OPTIONS = ['朋友', '恋人', '父母', '长辈', '同事', '孩子', '自己']
+
+const OCCASION_OPTIONS = ['生日', '节日', '纪念日', '日常惊喜', '感谢', '乔迁']
+
 const WAREHOUSE_TABS = [
   { key: 'all', label: '全部' },
   { key: 'wishlist', label: '想送' },
@@ -71,6 +75,9 @@ function App() {
   const [selectedTagIds, setSelectedTagIds] = useState(() => new Set())
   const [keyword, setKeyword] = useState('')
   const [typeKey, setTypeKey] = useState(null)
+  const [recipientKey, setRecipientKey] = useState(null)
+  const [interestKey, setInterestKey] = useState(null)
+  const [occasionKey, setOccasionKey] = useState(null)
   const [expandedTags, setExpandedTags] = useState(() => new Set())
   const [priceKey, setPriceKey] = useState('all')
 
@@ -238,6 +245,16 @@ function App() {
     [styleTags, typeKey]
   )
 
+  const interestTags = useMemo(
+    () => rootTags.filter((tag) => tag.name !== '风格'),
+    [rootTags]
+  )
+
+  const activeInterestTag = useMemo(
+    () => interestTags.find((tag) => tag.id === interestKey) ?? null,
+    [interestTags, interestKey]
+  )
+
   const activePrice = useMemo(
     () => PRICE_BUCKETS.find((bucket) => bucket.key === priceKey) ?? PRICE_BUCKETS[0],
     [priceKey]
@@ -263,23 +280,44 @@ function App() {
       }
 
       if (
+        recipientKey &&
+        !(gift.recipients ?? []).includes(recipientKey)
+      ) {
+        return false
+      }
+
+      if (occasionKey && !(gift.occasions ?? []).includes(occasionKey)) {
+        return false
+      }
+
+      if (
+        interestKey &&
+        !gift.tags.some((giftTag) => giftTag.id === interestKey)
+      ) {
+        return false
+      }
+
+      if (
         activeTypeTag &&
         !gift.tags.some((giftTag) => giftTag.id === activeTypeTag.id)
       ) {
         return false
       }
 
-      const matchesTags = selectedTags.every((tag) =>
-        gift.tags.some((giftTag) => giftTag.id === tag.id)
-      )
-      if (!matchesTags) return false
-
       if (activePrice.key === 'all') return true
       return (
         gift.priceMin < activePrice.max && gift.priceMax > activePrice.min
       )
     })
-  }, [giftsData, selectedTags, activePrice, keyword, activeTypeTag])
+  }, [
+    giftsData,
+    activePrice,
+    keyword,
+    recipientKey,
+    occasionKey,
+    interestKey,
+    activeTypeTag
+  ])
 
   function showView(nextView) {
     setView(nextView)
@@ -319,6 +357,9 @@ function App() {
     setPriceKey('all')
     setKeyword('')
     setTypeKey(null)
+    setRecipientKey(null)
+    setInterestKey(null)
+    setOccasionKey(null)
     setToast(null)
     setAccountOpen(false)
     setSelectedFriendId(null)
@@ -502,6 +543,9 @@ function App() {
     setPriceKey('all')
     setKeyword('')
     setTypeKey(null)
+    setRecipientKey(null)
+    setInterestKey(null)
+    setOccasionKey(null)
   }
 
   if (authStatus === 'checking') return <AuthLoading />
@@ -769,11 +813,10 @@ function App() {
                 <div>
                   <h1>找礼物</h1>
                   <p className="page-summary">
-                    {giftsData.total} 件礼物 · {allTags.length} 个标签 · 已选{' '}
-                    {selectedTagIds.size} 个
+                    {giftsData.total} 件礼物 · 当前 {filteredGifts.length} 件符合
                   </p>
                 </div>
-                <span className="page-meta">关键词搜索 · 标签筛选 · 品类参考价</span>
+                <span className="page-meta">对象 · 预算 · 类型 · 兴趣 · 场合</span>
               </div>
 
               <div className="search-hero">
@@ -808,264 +851,216 @@ function App() {
                 </div>
               </div>
 
-              <div className="search-layout">
-                <aside className="tag-panel">
-                  <div className="tag-panel-head">
-                    <div>
-                      <p className="section-kicker">TAGS</p>
-                      <h2>喜好标签</h2>
-                    </div>
-                    <span className="tag-total">{allTags.length}</span>
-                  </div>
-
-                  <div className="tag-toolbar">
-                    <button type="button" onClick={expandAllTags}>
-                      全部展开
-                    </button>
-                    <button type="button" onClick={() => setExpandedTags(new Set())}>
-                      全部收起
-                    </button>
-                    {selectedTagIds.size > 0 && (
+                            <div className="facet-search">
+                <div className="search-input-row">
+                  <div className="search-input-wrap">
+                    <input
+                      className="search-input"
+                      type="search"
+                      value={keyword}
+                      placeholder="搜礼物、兴趣或场景，如 足球 / 咖啡 / 通勤"
+                      aria-label="搜索礼物"
+                      onChange={(event) => setKeyword(event.target.value)}
+                    />
+                    {keyword && (
                       <button
+                        className="search-clear"
                         type="button"
-                        className="tag-toolbar-clear"
-                        onClick={() => setSelectedTagIds(new Set())}
+                        aria-label="清空搜索"
+                        onClick={() => setKeyword('')}
                       >
-                        清除选择
+                        ×
                       </button>
                     )}
                   </div>
-
-                  <ul className="tag-tree">
-                    {rootTags.map((root) => {
-                      const children = childrenByParent.get(root.id) ?? []
-                      const isExpanded = expandedTags.has(root.id)
-                      const isSelected = selectedTagIds.has(root.id)
-
-                      return (
-                        <li className="tag-group" key={root.id}>
-                          <div className="tag-row">
-                            <button
-                              type="button"
-                              className={`tag-expand ${isExpanded ? 'is-open' : ''}`}
-                              aria-label={`${isExpanded ? '收起' : '展开'}${root.name}`}
-                              aria-expanded={isExpanded}
-                              onClick={() => toggleExpand(root.id)}
-                            >
-                              ▸
-                            </button>
-                            <button
-                              type="button"
-                              className={`tag-select ${isSelected ? 'is-selected' : ''}`}
-                              aria-pressed={isSelected}
-                              onClick={() => toggleTag(root.id)}
-                            >
-                              <span>{root.name}</span>
-                              <span className="tag-count">
-                                {tagCounts.get(root.id) ?? 0}
-                              </span>
-                            </button>
-                          </div>
-
-                          {isExpanded && children.length > 0 && (
-                            <ul className="tag-children">
-                              {children.map((child) => {
-                                const childSelected = selectedTagIds.has(child.id)
-                                return (
-                                  <li key={child.id}>
-                                    <button
-                                      type="button"
-                                      className={`tag-select tag-child ${childSelected ? 'is-selected' : ''}`}
-                                      aria-pressed={childSelected}
-                                      onClick={() => toggleTag(child.id)}
-                                    >
-                                      <span>{child.name}</span>
-                                      <span className="tag-count">
-                                        {tagCounts.get(child.id) ?? 0}
-                                      </span>
-                                    </button>
-                                  </li>
-                                )
-                              })}
-                            </ul>
-                          )}
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </aside>
-
-                <div className="search-results">
-                  <div className="search-input-row">
-                    <div className="search-input-wrap">
-                      <input
-                        className="search-input"
-                        type="search"
-                        value={keyword}
-                        placeholder="搜礼物、兴趣或场景，如 足球 / 咖啡 / 通勤"
-                        aria-label="搜索礼物"
-                        onChange={(event) => setKeyword(event.target.value)}
-                      />
-                      {keyword && (
-                        <button
-                          className="search-clear"
-                          type="button"
-                          aria-label="清空搜索"
-                          onClick={() => setKeyword('')}
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {!keyword && (
-                    <div className="search-hints">
-                      <span>试试</span>
-                      {SEARCH_HINTS.map((hint) => (
-                        <button
-                          type="button"
-                          key={hint}
-                          onClick={() => setKeyword(hint)}
-                        >
-                          {hint}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="filter-bar">
-                    <div className="price-filter">
-                      <span className="filter-label">价格区间</span>
-                      <div className="price-chips">
-                        {PRICE_BUCKETS.map((bucket) => (
-                          <button
-                            type="button"
-                            key={bucket.key}
-                            className={`price-chip ${priceKey === bucket.key ? 'is-active' : ''}`}
-                            aria-pressed={priceKey === bucket.key}
-                            onClick={() => setPriceKey(bucket.key)}
-                          >
-                            {bucket.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <span className="result-count">
-                      <strong>{filteredGifts.length}</strong> / {giftsData.total} 件
-                    </span>
-                  </div>
-
-                  {styleTags.length > 0 && (
-                    <div className="type-filter">
-                      <span className="filter-label">礼物类型</span>
-                      <div className="type-chips">
-                        {styleTags.map((tag) => {
-                          const active = typeKey === tag.id
-                          return (
-                            <button
-                              type="button"
-                              key={tag.id}
-                              className={`type-chip ${active ? 'is-active' : ''}`}
-                              aria-pressed={active}
-                              onClick={() => setTypeKey(active ? null : tag.id)}
-                            >
-                              {tag.name}
-                              <span>{tagCounts.get(tag.id) ?? 0}</span>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {(selectedTags.length > 0 || keyword || activeTypeTag) && (
-                    <div className="selected-bar">
-                      <span className="selected-label">已选</span>
-                      {keyword && (
-                        <button
-                          type="button"
-                          className="selected-chip"
-                          onClick={() => setKeyword('')}
-                          title="移除关键词"
-                        >
-                          关键词：{keyword}
-                          <span aria-hidden="true">×</span>
-                        </button>
-                      )}
-                      {activeTypeTag && (
-                        <button
-                          type="button"
-                          className="selected-chip"
-                          onClick={() => setTypeKey(null)}
-                          title="移除类型"
-                        >
-                          类型：{activeTypeTag.name}
-                          <span aria-hidden="true">×</span>
-                        </button>
-                      )}
-                      {selectedTags.map((tag) => (
-                        <button
-                          type="button"
-                          className="selected-chip"
-                          key={tag.id}
-                          onClick={() => toggleTag(tag.id)}
-                          title={`移除 ${tag.name}`}
-                        >
-                          {tag.path.replace('/', ' / ')}
-                          <span aria-hidden="true">×</span>
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        className="clear-link"
-                        onClick={clearFilters}
-                      >
-                        清空筛选
-                      </button>
-                    </div>
-                  )}
-
-                  <p className="filter-note">
-                    关键词会搜索名称、适合人群、推荐理由和标签；标签之间取交集，价格跨区间会出现在相邻区间。
-                  </p>
-
-                  {filteredGifts.length > 0 ? (
-                    <div className="gift-list">
-                      {filteredGifts.map((gift) => (
-                        <GiftCard
-                          gift={gift}
-                          key={gift.id}
-                          favorite={favoriteByGiftId.get(gift.id)}
-                          pending={favoritePending === gift.id}
-                          onFavorite={handleFavorite}
-                          onOpen={openGift}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="results-empty">
-                      <span className="results-empty-emoji" aria-hidden="true">
-                        🫙
-                      </span>
-                      <h3>
-                        {keyword ? '没有找到相关礼物' : '没有同时符合的礼物'}
-                      </h3>
-                      <p>
-                        {keyword
-                          ? `没有找到“${keyword}”，换个词或减少筛选条件试试。`
-                          : '试着减少一个标签，或放宽价格区间。'}
-                      </p>
-                      <button
-                        className="button button-primary"
-                        type="button"
-                        onClick={clearFilters}
-                      >
-                        清除筛选
-                      </button>
-                    </div>
-                  )}
                 </div>
+
+                {!keyword && (
+                  <div className="search-hints">
+                    <span>试试</span>
+                    {SEARCH_HINTS.map((hint) => (
+                      <button
+                        type="button"
+                        key={hint}
+                        onClick={() => setKeyword(hint)}
+                      >
+                        {hint}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="facet-panel">
+                  <FacetRow
+                    label="送给谁"
+                    options={RECIPIENT_OPTIONS}
+                    value={recipientKey}
+                    onChange={setRecipientKey}
+                  />
+                  <FacetRow
+                    label="预算"
+                    options={PRICE_BUCKETS.filter((bucket) => bucket.key !== 'all').map(
+                      (bucket) => ({ value: bucket.key, label: bucket.label })
+                    )}
+                    value={priceKey === 'all' ? null : priceKey}
+                    onChange={(next) => setPriceKey(next ?? 'all')}
+                  />
+                  <FacetRow
+                    label="类型"
+                    options={styleTags.map((tag) => ({
+                      value: tag.id,
+                      label: tag.name
+                    }))}
+                    value={typeKey}
+                    onChange={setTypeKey}
+                  />
+                  <FacetRow
+                    label="兴趣"
+                    options={interestTags.map((tag) => ({
+                      value: tag.id,
+                      label: tag.name
+                    }))}
+                    value={interestKey}
+                    onChange={setInterestKey}
+                  />
+                  <FacetRow
+                    label="场合"
+                    options={OCCASION_OPTIONS}
+                    value={occasionKey}
+                    onChange={setOccasionKey}
+                  />
+                </div>
+
+                <div className="results-bar">
+                  <span>
+                    <strong>{filteredGifts.length}</strong> 件符合
+                  </span>
+                  <span>共 {giftsData.total} 件 · 参考价</span>
+                </div>
+
+                {(keyword ||
+                  recipientKey ||
+                  priceKey !== 'all' ||
+                  activeTypeTag ||
+                  activeInterestTag ||
+                  occasionKey) && (
+                  <div className="selected-bar">
+                    <span className="selected-label">已选</span>
+                    {keyword && (
+                      <button
+                        type="button"
+                        className="selected-chip"
+                        onClick={() => setKeyword('')}
+                        title="移除关键词"
+                      >
+                        关键词：{keyword}
+                        <span aria-hidden="true">×</span>
+                      </button>
+                    )}
+                    {recipientKey && (
+                      <button
+                        type="button"
+                        className="selected-chip"
+                        onClick={() => setRecipientKey(null)}
+                        title="移除对象"
+                      >
+                        对象：{recipientKey}
+                        <span aria-hidden="true">×</span>
+                      </button>
+                    )}
+                    {priceKey !== 'all' && (
+                      <button
+                        type="button"
+                        className="selected-chip"
+                        onClick={() => setPriceKey('all')}
+                        title="移除预算"
+                      >
+                        预算：{activePrice.label}
+                        <span aria-hidden="true">×</span>
+                      </button>
+                    )}
+                    {activeTypeTag && (
+                      <button
+                        type="button"
+                        className="selected-chip"
+                        onClick={() => setTypeKey(null)}
+                        title="移除类型"
+                      >
+                        类型：{activeTypeTag.name}
+                        <span aria-hidden="true">×</span>
+                      </button>
+                    )}
+                    {activeInterestTag && (
+                      <button
+                        type="button"
+                        className="selected-chip"
+                        onClick={() => setInterestKey(null)}
+                        title="移除兴趣"
+                      >
+                        兴趣：{activeInterestTag.name}
+                        <span aria-hidden="true">×</span>
+                      </button>
+                    )}
+                    {occasionKey && (
+                      <button
+                        type="button"
+                        className="selected-chip"
+                        onClick={() => setOccasionKey(null)}
+                        title="移除场合"
+                      >
+                        场合：{occasionKey}
+                        <span aria-hidden="true">×</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="clear-link"
+                      onClick={clearFilters}
+                    >
+                      清空筛选
+                    </button>
+                  </div>
+                )}
+
+                <p className="filter-note">
+                  先选对象、预算和场合，再用类型、兴趣或关键词缩小范围。价格仅作品类参考，不是实时售价。
+                </p>
+
+                {filteredGifts.length > 0 ? (
+                  <div className="gift-list">
+                    {filteredGifts.map((gift) => (
+                      <GiftCard
+                        gift={gift}
+                        key={gift.id}
+                        favorite={favoriteByGiftId.get(gift.id)}
+                        pending={favoritePending === gift.id}
+                        onFavorite={handleFavorite}
+                        onOpen={openGift}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="results-empty">
+                    <span className="results-empty-emoji" aria-hidden="true">
+                      🫙
+                    </span>
+                    <h3>
+                      {keyword ? '没有找到相关礼物' : '没有同时符合的礼物'}
+                    </h3>
+                    <p>
+                      {keyword
+                        ? `没有找到“${keyword}”，换个词或减少筛选条件试试。`
+                        : '试着减少一个条件，或者换一个预算/兴趣。'}
+                    </p>
+                    <button
+                      className="button button-primary"
+                      type="button"
+                      onClick={clearFilters}
+                    >
+                      清除筛选
+                    </button>
+                  </div>
+                )}
               </div>
             </section>
 
@@ -1203,6 +1198,7 @@ function App() {
             {detailGift ? (
               <GiftDetail
                 gift={detailGift}
+                isAdmin={Boolean(user?.isAdmin)}
                 onBack={() => showView('search')}
                 onToast={showToast}
               />
@@ -1821,6 +1817,40 @@ function FriendRow({ friend, selected, onSelect, onGenderChange }) {
   )
 }
 
+function FacetRow({ label, options, value, onChange }) {
+  return (
+    <div className="facet-row">
+      <span className="facet-label">{label}</span>
+      <div className="facet-chips">
+        <button
+          type="button"
+          className={`facet-chip ${value == null ? 'is-active' : ''}`}
+          aria-pressed={value == null}
+          onClick={() => onChange(null)}
+        >
+          全部
+        </button>
+        {options.map((option) => {
+          const optionValue = option?.value ?? option
+          const optionLabel = option?.label ?? option
+          const active = value === optionValue
+          return (
+            <button
+              type="button"
+              key={optionValue}
+              className={`facet-chip ${active ? 'is-active' : ''}`}
+              aria-pressed={active}
+              onClick={() => onChange(active ? null : optionValue)}
+            >
+              {optionLabel}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -1841,7 +1871,7 @@ function formatReviewDate(value) {
   })
 }
 
-function GiftDetail({ gift, onBack, onToast }) {
+function GiftDetail({ gift, isAdmin, onBack, onToast }) {
   const [reviewData, setReviewData] = useState(null)
   const [reviewStatus, setReviewStatus] = useState('loading')
   const [reviewError, setReviewError] = useState('')
@@ -1900,6 +1930,17 @@ function GiftDetail({ gift, onBack, onToast }) {
       setFormMessage({ type: '', text: '' })
     } catch {
       setFormMessage({ type: 'error', text: '读取图片失败，请重试' })
+    }
+  }
+
+  async function handleDeleteReview(reviewId) {
+    if (!window.confirm('删除这条评价？删除后无法恢复。')) return
+    try {
+      await fetchJson(`/api/reviews/${reviewId}`, { method: 'DELETE' })
+      onToast?.('评价已删除')
+      setReloadKey((key) => key + 1)
+    } catch (deleteError) {
+      onToast?.(deleteError.message || '删除评价失败')
     }
   }
 
@@ -2052,9 +2093,20 @@ function GiftDetail({ gift, onBack, onToast }) {
                         {'☆'.repeat(5 - review.rating)}
                       </span>
                     </div>
-                    <span className="review-date">
-                      {formatReviewDate(review.createdAt)}
-                    </span>
+                    <div className="review-item-side">
+                      <span className="review-date">
+                        {formatReviewDate(review.createdAt)}
+                      </span>
+                      {isAdmin && (
+                        <button
+                          className="review-delete"
+                          type="button"
+                          onClick={() => handleDeleteReview(review.id)}
+                        >
+                          删除
+                        </button>
+                      )}
+                    </div>
                   </div>
                   {review.comment && (
                     <p className="review-comment">{review.comment}</p>
@@ -2084,7 +2136,7 @@ function GiftDetail({ gift, onBack, onToast }) {
           <h3>写一条评价</h3>
           <p className="review-form-hint">
             评分由后端做贝叶斯平均，单条 5 星不会直接显示 10 分。
-            评价会匿名展示给所有登录用户，并计入全站评分。
+            评价会匿名展示给所有登录用户，并计入全站评分；管理员会删除违规内容。
           </p>
 
           <form className="review-form" onSubmit={handleSubmit}>

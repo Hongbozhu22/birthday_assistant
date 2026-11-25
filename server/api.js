@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { getGiftFacets } from './facets.js'
 import { getDb } from './db.js'
 import { addFriend, listFriends, updateFriendGender } from './friends.js'
 import {
@@ -10,7 +11,7 @@ import {
   updateFavorite
 } from './favorites.js'
 import { UPLOADS_DIR } from './paths.js'
-import { createReview, getGiftReviewData } from './reviews.js'
+import { adminDeleteReview, createReview, getGiftReviewData } from './reviews.js'
 import {
   assertLoginAllowed,
   changePassword,
@@ -208,6 +209,8 @@ export function getCatalog(db = getDb()) {
       (a, b) => (tagOrder.get(a) ?? 0) - (tagOrder.get(b) ?? 0)
     )
 
+    const facets = getGiftFacets(gift)
+
     return {
       id: gift.id,
       name: gift.name,
@@ -221,6 +224,8 @@ export function getCatalog(db = getDb()) {
       priceNote: PRICE_DISCLAIMER,
       gradientFrom: gift.gradient_from,
       gradientTo: gift.gradient_to,
+      recipients: facets.recipients,
+      occasions: facets.occasions,
       tags: giftTagIds.map((tagId) => {
         const tag = tagById.get(tagId)
         return {
@@ -440,6 +445,21 @@ export function createApiMiddleware() {
         }
 
         methodNotAllowed(res, ['GET', 'POST'])
+        return
+      }
+
+      const reviewAdminMatch = url.pathname.match(/^\/api\/reviews\/(\d+)$/)
+      if (reviewAdminMatch) {
+        if (req.method !== 'DELETE') {
+          methodNotAllowed(res, ['DELETE'])
+          return
+        }
+        const result = adminDeleteReview(
+          db,
+          Number(reviewAdminMatch[1]),
+          currentUser
+        )
+        sendJson(res, 200, result)
         return
       }
 

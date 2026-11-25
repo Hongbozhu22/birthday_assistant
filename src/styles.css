@@ -5634,6 +5634,28 @@ body::before,
   font-size: 11px;
 }
 
+.review-item-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.review-delete {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.review-delete:hover {
+  color: var(--ink);
+}
+
 .review-comment {
   margin-top: 7px;
   color: var(--ink-soft);
@@ -6263,7 +6285,102 @@ body::before,
   }
 }
 
-/* 搜索增强：关键词、礼物类型 */
+/* 电影式礼物筛选：对象 / 预算 / 类型 / 兴趣 / 场合 */
+.facet-search {
+  padding-top: 14px;
+}
+
+.facet-panel {
+  border-top: 1px solid var(--line);
+}
+
+.facet-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.facet-label {
+  padding-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.facet-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.facet-chip {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--ui-radius);
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.facet-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.facet-chip.is-active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.results-bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.results-bar strong {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+@media (max-width: 700px) {
+  .facet-search {
+    padding-top: 10px;
+  }
+
+  .facet-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 8px 0;
+  }
+
+  .facet-label {
+    padding-top: 0;
+  }
+
+  .facet-chip {
+    height: 25px;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+
+  .results-bar {
+    padding: 10px 0;
+  }
+}
+
 .search-input-row {
   margin-bottom: 8px;
 }
