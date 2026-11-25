@@ -6296,46 +6296,53 @@ body::before,
 
 .facet-row {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 14px;
   align-items: start;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--line);
+  padding: 9px 0;
 }
 
 .facet-label {
-  padding-top: 5px;
-  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: max-content;
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: var(--ui-radius);
+  background: var(--accent-soft);
+  color: var(--accent);
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .facet-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 4px 18px;
 }
 
 .facet-chip {
   height: 26px;
-  padding: 0 9px;
-  border: 1px solid var(--line-strong);
+  padding: 0;
+  border: 0;
   border-radius: var(--ui-radius);
   background: transparent;
   color: var(--ink-soft);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
 }
 
 .facet-chip:hover {
-  border-color: var(--accent);
   color: var(--accent);
 }
 
 .facet-chip.is-active {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: #fff;
+  padding: 0 9px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
 }
 
 .results-bar {
@@ -6372,8 +6379,7 @@ body::before,
 
   .facet-chip {
     height: 25px;
-    padding: 0 8px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .results-bar {
