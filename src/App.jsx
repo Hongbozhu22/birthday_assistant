@@ -51,6 +51,7 @@ function App() {
   const [reloadKey, setReloadKey] = useState(0)
   const [view, setView] = useState('birthdays')
   const [detailGiftId, setDetailGiftId] = useState(null)
+  const [selectedFriendId, setSelectedFriendId] = useState(null)
 
   const [form, setForm] = useState({
     name: '',
@@ -144,6 +145,12 @@ function App() {
 
     return () => controller.abort()
   }, [user, reloadKey])
+
+  useEffect(() => {
+    const isBirthdayView = status === 'ready' && view === 'birthdays'
+    document.body.classList.toggle('birthday-view', isBirthdayView)
+    return () => document.body.classList.remove('birthday-view')
+  }, [status, view])
 
   const friends = friendsData?.friends ?? []
   const nearest = friends[0] ?? null
@@ -272,6 +279,7 @@ function App() {
     setPriceKey('all')
     setToast(null)
     setAccountOpen(false)
+    setSelectedFriendId(null)
   }
 
   function openGift(giftId) {
@@ -456,7 +464,9 @@ function App() {
   if (!user) return <AuthScreen onAuthed={handleAuthed} initialError={authError} />
 
   return (
-    <div className="app">
+    <div
+      className={`app ${status === 'ready' && view === 'birthdays' ? 'is-birthday-view' : ''}`}
+    >
       <div className="ambient ambient-one" aria-hidden="true" />
       <div className="ambient ambient-two" aria-hidden="true" />
 
@@ -543,269 +553,182 @@ function App() {
         )}
 
         {status === 'ready' && view === 'birthdays' && (
-          <>
-            <section className="hero hero-birthday">
-              <div className="hero-copy">
-                <p className="eyebrow">
-                  <span className="eyebrow-dot" aria-hidden="true" />
-                  非商业 · 个人生日与礼物记录
+          <section className="birthday-page" id="birthdays">
+            <div className="birthday-page-head">
+              <div className="birthday-page-title">
+                <h1>生日日历</h1>
+                <p className="birthday-summary">
+                  {friends.length} 位好友 · 本月 {thisMonthCount} 人 · 30 天内{' '}
+                  {soonCount} 人
                 </p>
-                <h1>
-                  先记住生日，
-                  <br />
-                  <em>再想送什么</em>。
-                </h1>
-                <p className="hero-lead">
-                  把朋友的生日放进一个按剩余天数排序的列表里。看到“3
-                  天后”的那一刻，比临时翻聊天记录靠谱得多。
-                </p>
-
-                <div className="hero-actions">
-                  <a className="button button-primary" href="#add-friend">
-                    添加好友生日
-                    <span aria-hidden="true">↓</span>
-                  </a>
-                  <button
-                    className="button button-ghost"
-                    type="button"
-                    onClick={() => showView('search')}
-                  >
-                    去标签搜索
-                  </button>
-                </div>
-
-                <div className="hero-meta">
-                  <span className="meta-item">
-                    <span className="status-light" aria-hidden="true" />
-                    已记录 {friends.length} 位好友
-                  </span>
-                  <span className="meta-divider" aria-hidden="true" />
-                  <span className="meta-item">数据保存在本机 SQLite</span>
-                  {nearest && (
-                    <>
-                      <span className="meta-divider" aria-hidden="true" />
-                      <span className="meta-item">
-                        最近：{nearest.name} ·{' '}
-                        {nearest.isToday ? '今天' : `${nearest.daysUntil} 天后`}
-                      </span>
-                    </>
-                  )}
-                </div>
               </div>
-
-              <div className="hero-visual">
-                <NearestBirthdayCard friend={nearest} loading={false} />
+              <div className="birthday-page-actions">
+                <a className="birthday-add-link" href="#add-friend">
+                  添加好友
+                </a>
+                <span className="birthday-sort">按剩余天数排序</span>
               </div>
-            </section>
+            </div>
 
-            <section className="stats" aria-label="数据概览">
-              <StatCard
-                value={friends.length}
-                label="已记录好友"
-                hint="生日持久保存在本机"
-              />
-              <StatCard
-                value={soonCount}
-                label="30 天内生日"
-                hint="适合现在开始准备礼物"
-              />
-              <StatCard
-                value={thisMonthCount}
-                label="本月生日"
-                hint={`当前是 ${thisMonth} 月`}
-              />
-              <StatCard
-                value={giftsData.total}
-                label="礼物灵感"
-                hint="点击标签搜索开始筛选"
-              />
-            </section>
-
-            <section className="birthday-section" id="birthdays">
-              <div className="section-head">
-                <div>
-                  <p className="section-kicker">BIRTHDAY CALENDAR</p>
-                  <h2>生日日历</h2>
-                  <p className="section-lead">
-                    按距离下一次生日的天数排序，今天生日的排在最前面。
-                  </p>
-                </div>
-                <span className="sort-pill">
-                  <span aria-hidden="true">↑</span> 按剩余天数排序
-                </span>
-              </div>
-
-              {todayFriends.length > 0 && (
-                <div className="today-banner" role="status">
-                  <span className="today-banner-icon" aria-hidden="true">
-                    🎂
-                  </span>
-                  <div className="today-banner-text">
-                    {todayFriends.map((friend) => (
-                      <p key={friend.id}>
-                        <strong>{friend.name}</strong> 今天生日，快去祝
-                        {pronounOf(friend)}生日快乐吧。
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="birthday-grid">
-                <div className="birthday-list-card">
-                  <div className="list-head">
-                    <h3>全部好友</h3>
-                    <span>{friends.length} 人</span>
-                  </div>
-
-                  {friends.length > 0 ? (
-                    <ul className="friend-list">
-                      {friends.map((friend) => (
-                        <FriendRow
-                          friend={friend}
-                          key={friend.id}
-                          onGenderChange={handleFriendGender}
-                        />
-                      ))}
-                    </ul>
-                  ) : (
-                    <div className="friend-empty">
-                      <span className="friend-empty-emoji" aria-hidden="true">
-                        🕯️
-                      </span>
-                      <h3>还没有好友生日</h3>
-                      <p>
-                        手动添加好友的姓名和月/日，列表会自动按剩余天数排序，不用自己算。
-                      </p>
-                      <a className="button button-ghost" href="#add-friend">
-                        添加第一位好友
-                      </a>
-                    </div>
-                  )}
+            <div className="birthday-workspace">
+              <section className="birthday-list" aria-label="生日倒计时列表">
+                <div className="birthday-list-head" aria-hidden="true">
+                  <span />
+                  <span>好友</span>
+                  <span>生日</span>
+                  <span>剩余</span>
                 </div>
 
-                <aside className="side-card" id="add-friend">
-                  <div className="side-card-head">
-                    <div>
-                      <p className="section-kicker">ADD BIRTHDAY</p>
-                      <h3>添加好友</h3>
-                    </div>
-                    <span className="side-badge">手动录入</span>
-                  </div>
-                  <p className="side-lead">
-                    只保留手动添加：填姓名和月 / 日，年份可选。
-                  </p>
-
-                  <form className="friend-form" onSubmit={handleAddFriend}>
-                    <label className="field">
-                      <span>姓名</span>
-                      <input
-                        type="text"
-                        value={form.name}
-                        maxLength={30}
-                        placeholder="例如：张三"
-                        onChange={(event) => updateForm('name', event.target.value)}
-                        autoComplete="off"
+                {friends.length > 0 ? (
+                  <ul className="birthday-rows">
+                    {friends.map((friend) => (
+                      <FriendRow
+                        friend={friend}
+                        key={friend.id}
+                        selected={selectedFriendId === friend.id}
+                        onSelect={setSelectedFriendId}
+                        onGenderChange={handleFriendGender}
                       />
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="birthday-empty">
+                    <span className="birthday-empty-emoji" aria-hidden="true">
+                      🎂
+                    </span>
+                    <p>还没有好友生日</p>
+                    <small>
+                      在添加表单里填写姓名和月 / 日，列表会自动按剩余天数排序。
+                    </small>
+                  </div>
+                )}
+              </section>
+
+              <aside className="birthday-form" id="add-friend">
+                <h2>添加好友</h2>
+                <p className="birthday-form-lead">手动记录生日，年份可选。</p>
+
+                <form className="birthday-friend-form" onSubmit={handleAddFriend}>
+                  <label className="field">
+                    <span>姓名</span>
+                    <input
+                      type="text"
+                      value={form.name}
+                      maxLength={30}
+                      placeholder="例如：张三"
+                      onChange={(event) => updateForm('name', event.target.value)}
+                      autoComplete="off"
+                    />
+                  </label>
+
+                  <div className="field-row">
+                    <label className="field">
+                      <span>月</span>
+                      <select
+                        value={form.month}
+                        onChange={(event) => handleMonthChange(event.target.value)}
+                      >
+                        <option value="">月份</option>
+                        {Array.from({ length: 12 }, (_, index) => index + 1).map(
+                          (month) => (
+                            <option value={month} key={month}>
+                              {month} 月
+                            </option>
+                          )
+                        )}
+                      </select>
                     </label>
 
-                    <div className="field-row">
-                      <label className="field">
-                        <span>月</span>
-                        <select
-                          value={form.month}
-                          onChange={(event) => handleMonthChange(event.target.value)}
-                        >
-                          <option value="">月份</option>
-                          {Array.from({ length: 12 }, (_, index) => index + 1).map(
-                            (month) => (
-                              <option value={month} key={month}>
-                                {month} 月
-                              </option>
-                            )
-                          )}
-                        </select>
-                      </label>
-
-                      <label className="field">
-                        <span>日</span>
-                        <select
-                          value={form.day}
-                          onChange={(event) => updateForm('day', event.target.value)}
-                        >
-                          <option value="">日期</option>
-                          {Array.from(
-                            { length: daysInMonth(form.month) },
-                            (_, index) => index + 1
-                          ).map((day) => (
-                            <option value={day} key={day}>
-                              {day} 日
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-
-                    <div className="field-row">
-                      <label className="field">
-                        <span>性别</span>
-                        <select
-                          value={form.gender}
-                          onChange={(event) => updateForm('gender', event.target.value)}
-                        >
-                          <option value="">不填</option>
-                          <option value="male">男</option>
-                          <option value="female">女</option>
-                        </select>
-                      </label>
-
-                      <label className="field">
-                        <span>
-                          年份 <em>可选</em>
-                        </span>
-                        <input
-                          type="number"
-                          value={form.year}
-                          min={1900}
-                          max={new Date().getFullYear()}
-                          placeholder="例如 1995"
-                          onChange={(event) => updateForm('year', event.target.value)}
-                        />
-                      </label>
-                    </div>
-
-                    <button
-                      className="button button-primary form-submit"
-                      type="submit"
-                      disabled={formState.submitting}
-                    >
-                      {formState.submitting ? '保存中…' : '记下生日'}
-                    </button>
-
-                    {formState.message && (
-                      <p
-                        className={`form-message ${formState.type}`}
-                        role="status"
+                    <label className="field">
+                      <span>日</span>
+                      <select
+                        value={form.day}
+                        onChange={(event) => updateForm('day', event.target.value)}
                       >
-                        {formState.message}
-                      </p>
-                    )}
+                        <option value="">日期</option>
+                        {Array.from(
+                          { length: daysInMonth(form.month) },
+                          (_, index) => index + 1
+                        ).map((day) => (
+                          <option value={day} key={day}>
+                            {day} 日
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
 
-                    <p className="form-hint">
-                      填了年份会显示将满几岁；不填也能正常提醒生日。
+                  <div className="field-row">
+                    <label className="field">
+                      <span>性别</span>
+                      <select
+                        value={form.gender}
+                        onChange={(event) => updateForm('gender', event.target.value)}
+                      >
+                        <option value="">不填</option>
+                        <option value="male">男</option>
+                        <option value="female">女</option>
+                      </select>
+                    </label>
+
+                    <label className="field">
+                      <span>
+                        年份 <em>可选</em>
+                      </span>
+                      <input
+                        type="number"
+                        value={form.year}
+                        min={1900}
+                        max={new Date().getFullYear()}
+                        placeholder="例如 1995"
+                        onChange={(event) => updateForm('year', event.target.value)}
+                      />
+                    </label>
+                  </div>
+
+                  <button
+                    className="birthday-submit"
+                    type="submit"
+                    disabled={formState.submitting}
+                  >
+                    {formState.submitting ? '保存中…' : '记下生日'}
+                  </button>
+
+                  {formState.message && (
+                    <p
+                      className={`birthday-form-message ${formState.type}`}
+                      role="status"
+                    >
+                      {formState.message}
                     </p>
-                  </form>
-                </aside>
-              </div>
-            </section>
+                  )}
 
+                  <p className="birthday-form-hint">
+                    填了年份会显示将满几岁；不填也能正常提醒生日。
+                  </p>
+                </form>
+              </aside>
+            </div>
 
-          </>
+            <p className="birthday-note">数据保存在你的账号内 · 价格仅为品类参考</p>
+          </section>
         )}
+
 
         {status === 'ready' && view === 'search' && (
           <>
             <section className="search-page">
+              <div className="workbench-head">
+                <div>
+                  <h1>标签搜索</h1>
+                  <p className="page-summary">
+                    {giftsData.total} 件礼物 · {allTags.length} 个标签 · 已选{' '}
+                    {selectedTagIds.size} 个
+                  </p>
+                </div>
+                <span className="page-meta">标签取交集 · 品类参考价</span>
+              </div>
+
               <div className="search-hero">
                 <div>
                   <p className="eyebrow">
@@ -978,7 +901,7 @@ function App() {
                   </p>
 
                   {filteredGifts.length > 0 ? (
-                    <div className="gift-grid search-grid">
+                    <div className="gift-list">
                       {filteredGifts.map((gift) => (
                         <GiftCard
                           gift={gift}
@@ -1017,6 +940,17 @@ function App() {
         {status === 'ready' && view === 'warehouse' && (
           <>
             <section className="search-page warehouse-page">
+              <div className="workbench-head">
+                <div>
+                  <h1>仓库</h1>
+                  <p className="page-summary">
+                    {activeFavorites.length} 件收藏 · 想送 {wishlistCount} · 已送{' '}
+                    {giftedCount} · 已删除 {deletedFavorites.length}
+                  </p>
+                </div>
+                <span className="page-meta">软删除可恢复</span>
+              </div>
+
               <div className="search-hero">
                 <div>
                   <p className="eyebrow">
@@ -1484,8 +1418,8 @@ function AuthScreen({ onAuthed, initialError }) {
             <em>留在自己的账号里</em>。
           </h1>
           <p className="auth-lead">
-            每个人用自己的邮箱登录，只看到自己的好友生日、礼物仓库和评价记录。
-            账号之间互不可见，数据保存在部署的服务器上。
+            每个人用自己的邮箱登录，好友生日和礼物仓库互相隔离；评价全站共享并匿名展示。
+            数据保存在部署的服务器上。
           </p>
 
           <ul className="auth-features">
@@ -1683,46 +1617,63 @@ function NearestBirthdayCard({ friend, loading }) {
   )
 }
 
-function FriendRow({ friend, onGenderChange }) {
-  const tone = (friend.id % 5) + 1
+function FriendRow({ friend, selected, onSelect, onGenderChange }) {
+  const isToday = friend.isToday
 
   return (
-    <li className={`friend-row ${friend.isToday ? 'is-today' : ''}`}>
-      <span className={`friend-avatar tone-${tone}`} aria-hidden="true">
-        {friend.name.slice(0, 1)}
+    <li
+      className={`birthday-row ${isToday ? 'is-today' : ''} ${selected ? 'is-selected' : ''}`}
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
+      onClick={() => onSelect(selected ? null : friend.id)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onSelect(selected ? null : friend.id)
+        }
+      }}
+    >
+      <span className="birthday-block" aria-hidden="true">
+        {isToday ? '🎂' : '🎁'}
       </span>
 
-      <div className="friend-main">
-        <div className="friend-name-line">
+      <div className="birthday-row-main">
+        <div className="birthday-name-line">
           <strong>{friend.name}</strong>
           {friend.turnsAge != null && (
-            <span className="friend-age">将满 {friend.turnsAge} 岁</span>
+            <span className="birthday-age">将满 {friend.turnsAge} 岁</span>
           )}
-        </div>
-        <div className="friend-meta">
-          <span>{friend.birthdayLabel}</span>
-          {friend.birthYear && <span>{friend.birthYear} 年生</span>}
-          <span>下次 {friend.nextBirthdayLabel}</span>
           <select
-            className="friend-gender-select"
+            className="birthday-gender"
             value={friend.gender ?? ''}
             aria-label={`${friend.name}的性别`}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
             onChange={(event) => onGenderChange(friend.id, event.target.value)}
           >
-            <option value="">性别未填</option>
+            <option value="">性别</option>
             <option value="male">男</option>
             <option value="female">女</option>
           </select>
         </div>
+        <div className="birthday-row-meta">
+          {isToday ? (
+            <>今天生日，快去祝{pronounOf(friend)}生日快乐吧</>
+          ) : (
+            <>
+              {friend.birthYear ? `${friend.birthYear} 年生 · ` : ''}
+              下次 {friend.nextBirthdayLabel}
+            </>
+          )}
+        </div>
       </div>
 
-      <div className="friend-countdown">
-        <strong>{friend.isToday ? '今天生日' : `${friend.daysUntil} 天后`}</strong>
-        <span>
-          {friend.isToday
-            ? `快去祝${pronounOf(friend)}生日快乐`
-            : '距离下次生日'}
-        </span>
+      <span className="birthday-date">{friend.birthdayLabel}</span>
+
+      <div className="birthday-countdown">
+        <strong>{isToday ? '今天生日' : `${friend.daysUntil} 天后`}</strong>
+        <span>{isToday ? '别忘了祝福' : '距离下次生日'}</span>
       </div>
     </li>
   )
@@ -2266,39 +2217,23 @@ function GiftCard({ gift, favorite, pending, onFavorite, onOpen }) {
   const tags = visibleTags.length ? visibleTags : gift.tags.slice(0, 3)
 
   return (
-    <article className="gift-card">
-      <div
-        className="gift-visual"
-        style={{ '--from': gift.gradientFrom, '--to': gift.gradientTo }}
-      >
-        <span className="gift-category">{gift.category}</span>
-        <button
-          type="button"
-          className={`favorite-button ${favorite ? 'is-saved' : ''}`}
-          disabled={Boolean(favorite) || Boolean(pending)}
-          aria-label={favorite ? `${gift.name} 已在仓库` : `收藏 ${gift.name}`}
-          onClick={(event) => {
-            event.stopPropagation()
-            onFavorite?.(gift)
-          }}
-        >
-          {favorite ? '✓ 已收藏' : pending ? '收藏中…' : '☆ 收藏'}
-        </button>
-        <span className="gift-emoji" role="img" aria-label={gift.name}>
-          {gift.emoji}
-        </span>
-        <span className="gift-shine" aria-hidden="true" />
+    <article className="gift-row">
+      <div className="gift-row-block" aria-hidden="true">
+        {gift.emoji}
       </div>
 
-      <div className="gift-body">
-        <h3>{gift.name}</h3>
-        <p className="gift-fit">
+      <div className="gift-row-main">
+        <div className="gift-row-head">
+          <h3>{gift.name}</h3>
+          <span className="gift-row-category">{gift.category}</span>
+        </div>
+        <p className="gift-row-fit">
           <span>适合</span>
           {gift.fitFor}
         </p>
-        <p className="gift-reason">{gift.reason}</p>
+        <p className="gift-row-reason">{gift.reason}</p>
 
-        <div className="gift-tags">
+        <div className="gift-row-tags">
           {tags.map((tag) => (
             <span
               className={`tag-chip ${tag.parentName === '风格' ? 'tag-chip-style' : ''}`}
@@ -2308,18 +2243,32 @@ function GiftCard({ gift, favorite, pending, onFavorite, onOpen }) {
             </span>
           ))}
         </div>
+      </div>
 
-        <div className="gift-price">
-          <strong>{gift.priceLabel}</strong>
-          <span>{gift.priceNote}</span>
-        </div>
+      <div className="gift-row-price">
+        <strong>{gift.priceLabel}</strong>
+        <span>{gift.priceNote}</span>
+      </div>
 
+      <div className="gift-row-actions">
         <button
-          className="gift-detail-link"
           type="button"
+          className={`gift-favorite-button ${favorite ? 'is-saved' : ''}`}
+          disabled={Boolean(favorite) || Boolean(pending)}
+          aria-label={favorite ? `${gift.name} 已在仓库` : `收藏 ${gift.name}`}
+          onClick={(event) => {
+            event.stopPropagation()
+            onFavorite?.(gift)
+          }}
+        >
+          {favorite ? '已收藏' : pending ? '收藏中…' : '收藏'}
+        </button>
+        <button
+          type="button"
+          className="gift-open-button"
           onClick={() => onOpen?.(gift.id)}
         >
-          查看详情与评价 <span aria-hidden="true">→</span>
+          详情
         </button>
       </div>
     </article>
