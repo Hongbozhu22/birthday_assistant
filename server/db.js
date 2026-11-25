@@ -27,6 +27,28 @@ export function getDb() {
     console.log('[db] 已补充 friends.gender 字段')
   }
 
+  // 兼容单用户版本：补上 user_id，旧数据会在第一个账号注册时归入该账号
+  for (const table of ['friends', 'favorites', 'reviews']) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all()
+    if (!columns.some((column) => column.name === 'user_id')) {
+      db.exec(
+        `ALTER TABLE ${table} ADD COLUMN user_id INTEGER REFERENCES users(id)`
+      )
+      console.log(`[db] 已补充 ${table}.user_id 字段`)
+    }
+  }
+
+  db.exec('DROP INDEX IF EXISTS idx_favorites_active_gift')
+  db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_favorites_active_user_gift
+       ON favorites(user_id, gift_id) WHERE deleted_at IS NULL`
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id)'
+  )
+  db.exec('CREATE INDEX IF NOT EXISTS idx_reviews_user ON reviews(user_id)')
+  db.exec('CREATE INDEX IF NOT EXISTS idx_friends_user ON friends(user_id)')
+
   const row = db.prepare('SELECT COUNT(*) AS count FROM gifts').get()
   if (Number(row.count) === 0) {
     db.exec('BEGIN')

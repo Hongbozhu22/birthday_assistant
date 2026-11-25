@@ -48,7 +48,11 @@ function serveStatic(req, res) {
 
   const ext = path.extname(filePath).toLowerCase()
   res.writeHead(200, {
-    'Content-Type': MIME_TYPES[ext] || 'application/octet-stream'
+    'Content-Type': MIME_TYPES[ext] || 'application/octet-stream',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'X-Frame-Options': 'DENY',
+    ...(ext === '.html' ? { 'Cache-Control': 'no-cache' } : {})
   })
   fs.createReadStream(filePath).pipe(res)
 }

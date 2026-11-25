@@ -11,6 +11,18 @@ import {
 } from './favorites.js'
 import { UPLOADS_DIR } from './paths.js'
 import { createReview, getGiftReviewData } from './reviews.js'
+import {
+  assertLoginAllowed,
+  clearLoginFailures,
+  clearSessionCookie,
+  createSession,
+  destroySession,
+  getSessionUser,
+  loginUser,
+  recordLoginFailure,
+  registerUser,
+  setSessionCookie
+} from './auth.js'
 
 const IMAGE_MIME_TYPES = {
   '.png': 'image/png',
@@ -28,6 +40,8 @@ function sendJson(res, statusCode, payload, headers = {}) {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
     'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'same-origin',
     ...headers
   })
   res.end(body)
@@ -234,54 +248,144 @@ export function createApiMiddleware() {
       return
     }
 
-    const uploadMatch = url.pathname.match(
-      /^\/api\/uploads\/([A-Za-z0-9_-]+\.(png|jpe?g|webp|gif))$/
-    )
-    if (uploadMatch) {
-      if (req.method !== 'GET') {
-        methodNotAllowed(res, ['GET'])
-        return
-      }
-      const filePath = path.join(UPLOADS_DIR, uploadMatch[1])
-      if (!fs.existsSync(filePath)) {
-        sendJson(res, 404, { error: 'Image Not Found' })
-        return
-      }
-      const stat = fs.statSync(filePath)
-      res.writeHead(200, {
-        'Content-Type':
-          IMAGE_MIME_TYPES[path.extname(filePath).toLowerCase()] ||
-          'application/octet-stream',
-        'Content-Length': stat.size,
-        'Cache-Control': 'public, max-age=31536000, immutable'
-      })
-      fs.createReadStream(filePath).pipe(res)
-      return
-    }
-
     try {
+      const db = getDb()
+
+      // 简单的同源校验，降低跨站请求风险
+      if (req.method !== 'GET' && req.headers.origin) {
+        try {
+          if (new URL(req.headers.origin).host !== req.headers.host) {
+            sendJson(res, 403, { error: '跨站请求被拒绝' })
+            return
+          }
+        } catch {
+          sendJson(res, 403, { error: '请求来源不正确' })
+          return
+        }
+      }
+
+      const publicPaths = new Set([
+        '/api/auth/register',
+        '/api/auth/login',
+        '/api/auth/logout',
+        '/api/health'
+      ])
+      const isPublic = publicPaths.has(url.pathname)
+      let currentUser = null
+
+      if (!isPublic) {
+        currentUser = getSessionUser(db, req)
+        if (!currentUser) {
+          sendJson(res, 401, { error: '请先登录' })
+          return
+        }
+      }
+
+      if (url.pathname === '/api/auth/register') {
+        if (req.method !== 'POST') {
+          methodNotAllowed(res, ['POST'])
+          return
+        }
+        const body = await readJsonBody(req)
+        const user = await registerUser(db, body?.email, body?.password)
+        const session = createSession(db, user.id)
+        setSessionCookie(req, res, session.token, session.expiresAt)
+        sendJson(res, 201, { user })
+        return
+      }
+
+      if (url.pathname === '/api/auth/login') {
+        if (req.method !== 'POST') {
+          methodNotAllowed(res, ['POST'])
+          return
+        }
+        const body = await readJsonBody(req)
+        const ip = req.socket.remoteAddress || 'unknown'
+        assertLoginAllowed(ip, body?.email)
+        try {
+          const user = await loginUser(db, body?.email, body?.password)
+          clearLoginFailures(ip, body?.email)
+          const session = createSession(db, user.id)
+          setSessionCookie(req, res, session.token, session.expiresAt)
+          sendJson(res, 200, { user })
+        } catch (error) {
+          if (error.statusCode === 401) recordLoginFailure(ip, body?.email)
+          throw error
+        }
+        return
+      }
+
+      if (url.pathname === '/api/auth/logout') {
+        if (req.method !== 'POST') {
+          methodNotAllowed(res, ['POST'])
+          return
+        }
+        destroySession(db, req)
+        clearSessionCookie(req, res)
+        sendJson(res, 200, { ok: true })
+        return
+      }
+
+      if (url.pathname === '/api/auth/me') {
+        sendJson(res, 200, { user: currentUser })
+        return
+      }
+
+      const uploadMatch = url.pathname.match(
+        /^\/api\/uploads\/([A-Za-z0-9_-]+\.(png|jpe?g|webp|gif))$/
+      )
+      if (uploadMatch) {
+        if (req.method !== 'GET') {
+          methodNotAllowed(res, ['GET'])
+          return
+        }
+        const owned = db
+          .prepare(
+            'SELECT id FROM reviews WHERE image_path = ? AND user_id = ? LIMIT 1'
+          )
+          .get(url.pathname, currentUser.id)
+        if (!owned) {
+          sendJson(res, 404, { error: 'Image Not Found' })
+          return
+        }
+        const filePath = path.join(UPLOADS_DIR, uploadMatch[1])
+        if (!fs.existsSync(filePath)) {
+          sendJson(res, 404, { error: 'Image Not Found' })
+          return
+        }
+        const stat = fs.statSync(filePath)
+        res.writeHead(200, {
+          'Content-Type':
+            IMAGE_MIME_TYPES[path.extname(filePath).toLowerCase()] ||
+            'application/octet-stream',
+          'Content-Length': stat.size,
+          'Cache-Control': 'private, max-age=86400'
+        })
+        fs.createReadStream(filePath).pipe(res)
+        return
+      }
+
       if (url.pathname === '/api/gifts') {
         if (req.method !== 'GET') {
           methodNotAllowed(res, ['GET'])
           return
         }
-        sendJson(res, 200, getCatalog())
+        sendJson(res, 200, getCatalog(db))
         return
       }
 
       const reviewMatch = url.pathname.match(/^\/api\/gifts\/(\d+)\/reviews$/)
       if (reviewMatch) {
         const giftId = Number(reviewMatch[1])
-        const db = getDb()
 
         if (req.method === 'GET') {
-          sendJson(res, 200, getGiftReviewData(db, giftId))
+          sendJson(res, 200, getGiftReviewData(db, giftId, currentUser.id))
           return
         }
 
         if (req.method === 'POST') {
           const body = await readJsonBody(req, 8 * 1024 * 1024)
-          const result = createReview(db, giftId, body)
+          const result = createReview(db, giftId, body, currentUser.id)
           sendJson(res, 201, result)
           return
         }
@@ -292,12 +396,12 @@ export function createApiMiddleware() {
 
       if (url.pathname === '/api/friends') {
         if (req.method === 'GET') {
-          sendJson(res, 200, listFriends(getDb()))
+          sendJson(res, 200, listFriends(db, currentUser.id))
           return
         }
         if (req.method === 'POST') {
           const body = await readJsonBody(req)
-          const friend = addFriend(getDb(), body)
+          const friend = addFriend(db, body, currentUser.id)
           sendJson(res, 201, { friend })
           return
         }
@@ -313,9 +417,10 @@ export function createApiMiddleware() {
         }
         const body = await readJsonBody(req)
         const friend = updateFriendGender(
-          getDb(),
+          db,
           Number(friendIdMatch[1]),
-          body?.gender
+          body?.gender,
+          currentUser.id
         )
         sendJson(res, 200, { friend })
         return
@@ -323,9 +428,8 @@ export function createApiMiddleware() {
 
       if (url.pathname === '/api/favorites') {
         if (req.method === 'GET') {
-          const db = getDb()
           const { giftsById } = buildGiftMap(db)
-          const rows = listFavoriteRows(db)
+          const rows = listFavoriteRows(db, currentUser.id)
           const favorites = rows
             .filter((row) => !row.deleted_at)
             .map((row) => serializeFavorite(row, giftsById))
@@ -347,9 +451,8 @@ export function createApiMiddleware() {
         }
 
         if (req.method === 'POST') {
-          const db = getDb()
           const body = await readJsonBody(req)
-          const row = addFavorite(db, body?.giftId)
+          const row = addFavorite(db, body?.giftId, currentUser.id)
           const { giftsById } = buildGiftMap(db)
           sendJson(res, 201, { favorite: serializeFavorite(row, giftsById) })
           return
@@ -367,8 +470,11 @@ export function createApiMiddleware() {
           methodNotAllowed(res, ['POST'])
           return
         }
-        const db = getDb()
-        const row = restoreFavorite(db, Number(favoriteRestoreMatch[1]))
+        const row = restoreFavorite(
+          db,
+          Number(favoriteRestoreMatch[1]),
+          currentUser.id
+        )
         const { giftsById } = buildGiftMap(db)
         sendJson(res, 200, { favorite: serializeFavorite(row, giftsById) })
         return
@@ -377,18 +483,17 @@ export function createApiMiddleware() {
       const favoriteIdMatch = url.pathname.match(/^\/api\/favorites\/(\d+)$/)
       if (favoriteIdMatch) {
         const favoriteId = Number(favoriteIdMatch[1])
-        const db = getDb()
 
         if (req.method === 'PATCH') {
           const body = await readJsonBody(req)
-          const row = updateFavorite(db, favoriteId, body)
+          const row = updateFavorite(db, favoriteId, body, currentUser.id)
           const { giftsById } = buildGiftMap(db)
           sendJson(res, 200, { favorite: serializeFavorite(row, giftsById) })
           return
         }
 
         if (req.method === 'DELETE') {
-          const row = deleteFavorite(db, favoriteId)
+          const row = deleteFavorite(db, favoriteId, currentUser.id)
           const { giftsById } = buildGiftMap(db)
           sendJson(res, 200, { favorite: serializeFavorite(row, giftsById) })
           return
@@ -403,16 +508,13 @@ export function createApiMiddleware() {
           methodNotAllowed(res, ['GET'])
           return
         }
-        const db = getDb()
         const gifts = db.prepare('SELECT COUNT(*) AS count FROM gifts').get()
         const tags = db.prepare('SELECT COUNT(*) AS count FROM tags').get()
-        const friends = db.prepare('SELECT COUNT(*) AS count FROM friends').get()
         sendJson(res, 200, {
           ok: true,
           counts: {
             gifts: Number(gifts.count),
-            tags: Number(tags.count),
-            friends: Number(friends.count)
+            tags: Number(tags.count)
           }
         })
         return

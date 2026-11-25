@@ -73,7 +73,39 @@ function App() {
   const [warehouseTab, setWarehouseTab] = useState('all')
   const [toast, setToast] = useState(null)
 
+  const [authStatus, setAuthStatus] = useState('checking')
+  const [user, setUser] = useState(null)
+  const [authError, setAuthError] = useState('')
+
   useEffect(() => {
+    const controller = new AbortController()
+    fetchJson('/api/auth/me', { signal: controller.signal })
+      .then((payload) => {
+        setUser(payload.user)
+        setAuthStatus('authed')
+      })
+      .catch((authFetchError) => {
+        if (authFetchError.name === 'AbortError') return
+        if (authFetchError.status === 401) {
+          setUser(null)
+          setAuthStatus('guest')
+          return
+        }
+        setAuthError(authFetchError.message || '无法连接登录服务')
+        setAuthStatus('guest')
+      })
+    return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
+    if (!user) {
+      setStatus('idle')
+      setGiftsData(null)
+      setFriendsData(null)
+      setFavoritesData(null)
+      return
+    }
+
     const controller = new AbortController()
     setStatus('loading')
     setError('')
@@ -100,12 +132,17 @@ function App() {
       })
       .catch((fetchError) => {
         if (fetchError.name === 'AbortError') return
+        if (fetchError.status === 401) {
+          setUser(null)
+          setAuthStatus('guest')
+          return
+        }
         setError(fetchError.message || '未知错误')
         setStatus('error')
       })
 
     return () => controller.abort()
-  }, [reloadKey])
+  }, [user, reloadKey])
 
   const friends = friendsData?.friends ?? []
   const nearest = friends[0] ?? null
@@ -199,6 +236,36 @@ function App() {
   function showView(nextView) {
     setView(nextView)
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function handleAuthed(nextUser) {
+    setUser(nextUser)
+    setAuthStatus('authed')
+    setAuthError('')
+    setStatus('loading')
+    setView('birthdays')
+    setDetailGiftId(null)
+  }
+
+  async function handleLogout() {
+    try {
+      await fetchJson('/api/auth/logout', { method: 'POST' })
+    } catch {
+      // 即使接口失败也在前端退出
+    } finally {
+      setUser(null)
+      setAuthStatus('guest')
+      setAuthError('')
+      setStatus('idle')
+      setGiftsData(null)
+      setFriendsData(null)
+      setFavoritesData(null)
+      setView('birthdays')
+      setDetailGiftId(null)
+      setSelectedTagIds(new Set())
+      setPriceKey('all')
+      setToast(null)
+    }
   }
 
   function openGift(giftId) {
@@ -379,6 +446,9 @@ function App() {
     setPriceKey('all')
   }
 
+  if (authStatus === 'checking') return <AuthLoading />
+  if (!user) return <AuthScreen onAuthed={handleAuthed} initialError={authError} />
+
   return (
     <div className="app">
       <div className="ambient ambient-one" aria-hidden="true" />
@@ -422,10 +492,19 @@ function App() {
               仓库
             </button>
           </nav>
-          <span className="stage-pill">
-            <span className="stage-dot" aria-hidden="true" />
-            阶段 6 / 6 · README 与发布
-          </span>
+          <div className="account-menu">
+            <span className="account-email" title={user.email}>
+              {user.email}
+            </span>
+            <button
+              className="account-logout"
+              type="button"
+              onClick={handleLogout}
+              title="退出登录"
+            >
+              退出
+            </button>
+          </div>
         </div>
       </header>
 
@@ -433,7 +512,7 @@ function App() {
         {status === 'loading' && (
           <>
             <LoadingPanel />
-            <StagePanel />
+
           </>
         )}
 
@@ -455,7 +534,7 @@ function App() {
                 重新加载
               </button>
             </section>
-            <StagePanel />
+
           </>
         )}
 
@@ -716,7 +795,7 @@ function App() {
               </div>
             </section>
 
-            <StagePanel />
+
           </>
         )}
 
@@ -927,7 +1006,7 @@ function App() {
               </div>
             </section>
 
-            <StagePanel />
+
           </>
         )}
 
@@ -1041,7 +1120,7 @@ function App() {
               )}
             </section>
 
-            <StagePanel />
+
           </>
         )}
 
@@ -1069,13 +1148,13 @@ function App() {
                 </button>
               </div>
             )}
-            <StagePanel />
+
           </>
         )}
       </main>
 
       <footer className="footer">
-        <span>礼物助手 · 阶段 6 / 6</span>
+        <span>礼物助手 · 个人生日与礼物记录</span>
         <span className="footer-dot" aria-hidden="true" />
         <span>数据保存在本机 data/gift-assistant.db</span>
         <span className="footer-dot" aria-hidden="true" />
@@ -1087,6 +1166,208 @@ function App() {
           {toast.message}
         </div>
       )}
+    </div>
+  )
+}
+
+function AuthLoading() {
+  return (
+    <div className="auth-shell">
+      <div className="auth-loading">
+        <span className="brand-mark auth-loading-mark" aria-hidden="true">
+          🎁
+        </span>
+        <div className="spinner" aria-hidden="true" />
+        <p>正在确认登录状态…</p>
+      </div>
+    </div>
+  )
+}
+
+function AuthScreen({ onAuthed, initialError }) {
+  const [mode, setMode] = useState('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  function switchMode(nextMode) {
+    setMode(nextMode)
+    setPassword('')
+    setConfirmPassword('')
+    setError('')
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault()
+    setError('')
+
+    if (mode === 'register' && password !== confirmPassword) {
+      setError('两次输入的密码不一致')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const payload = await fetchJson(`/api/auth/${mode}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      })
+      onAuthed(payload.user)
+    } catch (authSubmitError) {
+      setError(authSubmitError.message || '操作失败，请重试')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="auth-shell">
+      <div className="ambient ambient-one" aria-hidden="true" />
+      <div className="ambient ambient-two" aria-hidden="true" />
+
+      <div className="auth-wrap">
+        <section className="auth-intro">
+          <a className="brand" href="/">
+            <span className="brand-mark" aria-hidden="true">
+              🎁
+            </span>
+            <span className="brand-text">
+              <strong>礼物助手</strong>
+              <small>Gift Assistant</small>
+            </span>
+          </a>
+
+          <p className="eyebrow auth-eyebrow">
+            <span className="eyebrow-dot" aria-hidden="true" />
+            个人账号 · 本地优先
+          </p>
+          <h1>
+            把生日和礼物，
+            <br />
+            <em>留在自己的账号里</em>。
+          </h1>
+          <p className="auth-lead">
+            每个人用自己的邮箱登录，只看到自己的好友生日、礼物仓库和评价记录。
+            账号之间互不可见，数据保存在部署的服务器上。
+          </p>
+
+          <ul className="auth-features">
+            <li>生日倒计时与性别称呼</li>
+            <li>标签交集筛选与价格区间</li>
+            <li>想送 / 已送仓库与恢复</li>
+            <li>贝叶斯评分与图文评价</li>
+          </ul>
+
+          <p className="auth-privacy">
+            登录仅需要邮箱和密码，不发送验证邮件，也不接入第三方登录。
+          </p>
+        </section>
+
+        <section className="auth-card">
+          <div className="auth-tabs" role="tablist" aria-label="登录或注册">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'login'}
+              className={mode === 'login' ? 'is-active' : ''}
+              onClick={() => switchMode('login')}
+            >
+              登录
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'register'}
+              className={mode === 'register' ? 'is-active' : ''}
+              onClick={() => switchMode('register')}
+            >
+              注册
+            </button>
+          </div>
+
+          <h2>{mode === 'login' ? '欢迎回来' : '创建账号'}</h2>
+          <p className="auth-card-hint">
+            {mode === 'login'
+              ? '用邮箱和密码进入你的生日与礼物记录。'
+              : '邮箱只作为登录名使用，不会发送邮件。'}
+          </p>
+
+          <form className="auth-form" onSubmit={handleSubmit}>
+            <label className="auth-field">
+              <span>邮箱</span>
+              <input
+                type="email"
+                value={email}
+                required
+                autoComplete="username"
+                placeholder="you@example.com"
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </label>
+
+            <label className="auth-field">
+              <span>密码</span>
+              <input
+                type="password"
+                value={password}
+                required
+                minLength={8}
+                maxLength={128}
+                autoComplete={
+                  mode === 'login' ? 'current-password' : 'new-password'
+                }
+                placeholder="至少 8 个字符"
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </label>
+
+            {mode === 'register' && (
+              <label className="auth-field">
+                <span>确认密码</span>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  required
+                  minLength={8}
+                  maxLength={128}
+                  autoComplete="new-password"
+                  placeholder="再输入一次密码"
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                />
+              </label>
+            )}
+
+            {(error || initialError) && (
+              <p className="form-message error auth-error" role="alert">
+                {error || initialError}
+              </p>
+            )}
+
+            <button
+              className="button button-primary auth-submit"
+              type="submit"
+              disabled={submitting}
+            >
+              {submitting
+                ? mode === 'login'
+                  ? '登录中…'
+                  : '创建中…'
+                : mode === 'login'
+                  ? '登录'
+                  : '注册并登录'}
+            </button>
+          </form>
+
+          <p className="auth-card-note">
+            {mode === 'register'
+              ? '如果是本机第一个账号，已有的好友、仓库和评价会自动归入这个账号。'
+              : '还没有账号？切换到“注册”，用邮箱创建一个。'}
+          </p>
+        </section>
+      </div>
     </div>
   )
 }
@@ -1457,6 +1738,7 @@ function GiftDetail({ gift, onBack, onToast }) {
           <h3>写一条评价</h3>
           <p className="review-form-hint">
             评分由后端做贝叶斯平均，单条 5 星不会直接显示 10 分。
+            评价仅当前账号可见。
           </p>
 
           <form className="review-form" onSubmit={handleSubmit}>

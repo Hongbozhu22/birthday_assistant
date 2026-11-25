@@ -1,10 +1,22 @@
 # 🎁 礼物助手 Gift Assistant
 
-> 朋友生日快到了，却总是临时翻聊天记录想送什么？礼物助手把生日提醒、礼物灵感、仓库和真实评价放进一个本地小工具里。
+> 朋友生日快到了，却总是临时翻聊天记录想送什么？礼物助手把生日提醒、礼物灵感、仓库和真实评价放进一个多账号的小工具里。
 
-非商业个人项目。所有数据保存在本机 SQLite，不上传云端，不接电商平台。
+非商业个人项目。支持邮箱 + 密码注册登录，每个账号的好友、仓库和评价互相隔离；数据保存在部署服务器的 SQLite 中。
 
-![生日日历](docs/screenshot-birthday.png)
+![登录](docs/screenshot-login.png)
+
+## 账号与登录
+
+- 邮箱 + 密码注册，注册成功后自动登录
+- 密码使用 Node.js `scrypt` 加盐哈希保存，不存明文
+- 登录态使用 `HttpOnly` + `SameSite=Lax` 的会话 Cookie，有效期 30 天
+- 每个账号只能访问自己的好友、仓库与评价；跨账号请求返回 404
+- 退出登录会删除服务端会话
+- 单用户版本的旧数据，会在**第一个账号注册时**自动归入该账号
+- 登录尝试有频率限制；生产环境必须启用 HTTPS，并设置 `COOKIE_SECURE=1`
+
+目前**没有**做邮箱验证、找回密码、第三方登录和账号注销。邮箱实际上只作为登录名使用，不会发送验证邮件。
 
 ## 功能
 
@@ -15,6 +27,8 @@
 - 生日当天显示“某某某今天生日，快去祝他/她生日快乐吧”，称呼按性别显示
 - 好友列表里可以直接补填或调整性别
 - 2 月 29 日在平年按 2 月 28 日提醒
+
+![生日日历](docs/screenshot-birthday.png)
 
 ### 标签搜索
 
@@ -32,7 +46,7 @@
 - 区分“想送 / 已送 / 已删除”
 - 支持填写购买渠道和实际价格
 - 删除为软删除，只写 `deleted_at`，可随时恢复
-- 同一件礼物只保留一条有效收藏
+- 同一账号下，同一件礼物只保留一条有效收藏
 
 ![仓库](docs/screenshot-warehouse.png)
 
@@ -43,7 +57,8 @@
 - 评论列表展示星级、文字、图片和日期
 - 评分只在后端计算，前端只负责展示
 - 公式：`((C × m + Σ评分) / (C + n)) × 2`，其中 `C = 10`、`m = 3.5`
-- 图片保存在 `data/uploads/`，通过 `/api/uploads/:filename` 读取
+- 评价按账号隔离，每个账号看到的是自己的评价与得分
+- 图片保存在 `data/uploads/`，通过登录态校验后由 `/api/uploads/:filename` 读取
 
 ![商品详情与评价](docs/screenshot-detail.png)
 
@@ -51,6 +66,7 @@
 
 - **Vite 7 + React 19**：前端
 - **Node.js `node:sqlite`**：后端与数据库，无需额外数据库服务
+- **Node.js `crypto.scrypt` + 服务端会话表**：密码哈希与登录态
 - 原生 CSS：无 UI 框架
 - 开发模式下由 Vite 同源挂载 `/api`，不需要启动第二个进程
 - 生产模式由 `server/index.js` 同时提供静态页面和 API
@@ -64,7 +80,7 @@ npm install
 npm run dev
 ```
 
-打开 <http://127.0.0.1:5173>。
+打开 <http://127.0.0.1:5173>，第一次使用先注册一个账号。
 
 首次启动会自动创建 `data/gift-assistant.db`，建表并写入 71 条种子礼物与 54 个标签。
 
@@ -73,56 +89,77 @@ npm run dev
 npm run build
 npm start
 
-# 重置本机数据库（会删除好友、仓库、评价等全部本地数据）
+# 重置数据库（会删除全部账号、好友、仓库、评价与上传图片）
 npm run db:reset
 ```
+
+## 部署到公网
+
+简短回答：
+
+- **只给同一局域网的人看**：不需要买域名或服务器，用 `npm run dev -- --host 0.0.0.0`，别人通过你的局域网 IP 访问。
+- **给互联网上任何人看**：需要一台持续运行 Node.js 的服务器或托管平台，并且要有持久磁盘保存 SQLite 和上传图片。域名不是必须的，平台子域名也能用；想要好记的自定义域名才需要每年购买。
+- **Vercel / Netlify 这类纯静态或 Serverless 平台不适合直接部署**：文件系统是临时的，SQLite 和 `data/uploads/` 会丢。需要换成带持久卷的 Node 托管，或外部数据库 + 对象存储。
+- **登录系统必须走 HTTPS**，否则密码和会话 Cookie 会在网络上明文传输。
+
+完整方案（VPS、PaaS、家庭宽带 + Cloudflare Tunnel、域名、环境变量、备份与安全检查）见 **[DEPLOYMENT.md](DEPLOYMENT.md)**。
 
 ## 项目结构
 
 ```text
 .
 ├── server/
-│   ├── api.js          # 所有 HTTP 接口与图片读取
+│   ├── api.js          # 所有 HTTP 接口、鉴权与图片读取
+│   ├── auth.js         # 注册、登录、密码哈希与会话
 │   ├── db.js           # SQLite 连接、建表与迁移
-│   ├── schema.js       # 6 张业务表
+│   ├── schema.js       # 业务表（含 users / sessions）
 │   ├── birthdays.js    # 生日倒计时计算
-│   ├── friends.js      # 好友校验与读写
-│   ├── favorites.js    # 仓库、软删除与恢复
-│   ├── reviews.js      # 贝叶斯评分、评价与图片保存
+│   ├── friends.js      # 好友校验与读写（按账号隔离）
+│   ├── favorites.js    # 仓库、软删除与恢复（按账号隔离）
+│   ├── reviews.js      # 贝叶斯评分、评价与图片保存（按账号隔离）
 │   └── seed/           # 种子礼物与标签树
 ├── src/
-│   ├── App.jsx         # 页面与交互
+│   ├── App.jsx         # 页面、登录界面与交互
 │   └── styles.css      # 全部样式
 ├── docs/               # README 截图
-├── data/               # 本机数据库与上传图片（已 gitignore）
+├── data/               # 数据库与上传图片（已 gitignore）
 └── index.html
 ```
 
 ## 接口一览
 
+除注册、登录、退出和健康检查外，所有接口都需要登录态。
+
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
+| POST | `/api/auth/register` | 注册：`{ email, password }`，成功后自动登录 |
+| POST | `/api/auth/login` | 登录：`{ email, password }` |
+| POST | `/api/auth/logout` | 退出并清除会话 |
+| GET | `/api/auth/me` | 当前登录账号 |
 | GET | `/api/gifts` | 礼物与标签数据 |
-| GET | `/api/gifts/:id/reviews` | 评价列表、贝叶斯得分与星级分布 |
+| GET | `/api/gifts/:id/reviews` | 当前账号的评价列表、得分与星级分布 |
 | POST | `/api/gifts/:id/reviews` | 提交评价：`{ rating, comment, image? }` |
-| GET | `/api/friends` | 好友生日列表（按剩余天数排序） |
+| GET | `/api/friends` | 当前账号的好友生日列表 |
 | POST | `/api/friends` | 添加好友：`{ name, month, day, gender?, year? }` |
 | PATCH | `/api/friends/:id` | 更新好友性别 |
-| GET | `/api/favorites` | 仓库列表（有效 + 已删除） |
+| GET | `/api/favorites` | 当前账号的仓库（有效 + 已删除） |
 | POST | `/api/favorites` | 收藏礼物：`{ giftId }` |
 | PATCH | `/api/favorites/:id` | 更新状态 / 渠道 / 实际价格 |
 | DELETE | `/api/favorites/:id` | 软删除收藏 |
 | POST | `/api/favorites/:id/restore` | 恢复已删除的收藏 |
-| GET | `/api/uploads/:filename` | 读取评价图片 |
-| GET | `/api/health` | 数据表计数 |
+| GET | `/api/uploads/:filename` | 读取当前账号的评价图片 |
+| GET | `/api/health` | 服务健康检查（仅返回礼物/标签数量） |
 
 ## 数据与隐私
 
 - 数据库：`data/gift-assistant.db`
 - 评价图片：`data/uploads/`
-- 没有任何账号体系，也不会上传数据到第三方服务
+- 账号密码只保存 `scrypt` 哈希；会话只保存 token 的 SHA-256 哈希
+- 好友、仓库、评价均按 `user_id` 隔离
+- 部署在公网时，服务器管理员仍然可以直接读取数据库文件；这不是端到端加密工具
 - `data/` 下的数据库与图片已加入 `.gitignore`，不会进入 Git 仓库
-- 想清空本地数据可执行 `npm run db:reset`，或直接删除 `data/` 目录
+- 想清空数据可执行 `npm run db:reset`，或删除 `data/` 目录
+- 公开运营前请补充隐私说明与用户协议，并对用户上传的图片做内容管理
 
 ## 合规说明
 
@@ -130,19 +167,21 @@ npm run db:reset
 - **不抓取任何电商平台数据**。71 条礼物为手工整理的品类参考，不含商家、链接或具体商品 ID。
 - **价格仅为品类参考**，例如“比赛级足球：200-400 元”，不是实时售价，也不绑定任何商家。
 - **购买渠道由用户自己填写**，应用不推荐具体商家，不做优劣背书。
-- **评价只代表本地用户的主观记录**，不构成购买建议。
+- **评价只代表用户自己的主观记录**，不构成购买建议。
 - 本项目为**非商业性质**，不包含广告、返利、联盟链接或付费功能。
-- 截图中的好友姓名、生日、渠道和评价均为虚构演示数据，不包含真实个人信息。
+- 截图中的邮箱、好友姓名、生日、渠道和评价均为虚构演示数据，不包含真实个人信息。
 
 ## Roadmap
 
 当前版本刻意没有做以下功能：
 
+- 邮箱验证、找回密码、修改密码
+- 账号注销与数据导出
 - 视频评论、表情包 / 贴纸
 - 评论回复与点赞
-- 多用户登录、云端同步与共享清单
+- 共享礼物清单、多人协作
 - 生日提醒推送（系统通知 / 邮件）
-- 礼物计划导出、已送礼物统计
+- 已送礼物统计与礼物计划导出
 - 更多排序方式（价格、随机灵感）与深色模式
 - 移动端原生 App
 
@@ -151,7 +190,7 @@ npm run db:reset
 ```bash
 git init -b main
 git add .
-git commit -m "feat: 礼物助手 v0.1.0"
+git commit -m "feat: 礼物助手 v0.2.0 账号版"
 git remote add origin <your-repository-url>
 git push -u origin main
 ```
@@ -167,7 +206,7 @@ data/*.db-wal
 data/uploads/
 ```
 
-项目不使用任何环境变量或密钥，克隆后按“本地运行”即可启动。
+生产部署需要设置的变量见 [DEPLOYMENT.md](DEPLOYMENT.md)，项目本身不包含密钥文件。
 
 ## 许可
 

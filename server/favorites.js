@@ -12,20 +12,23 @@ function toFavoriteId(value) {
   return id
 }
 
-function getFavoriteRow(db, id) {
-  return db.prepare('SELECT * FROM favorites WHERE id = ?').get(id)
+function getFavoriteRow(db, id, userId) {
+  return db
+    .prepare('SELECT * FROM favorites WHERE id = ? AND user_id = ?')
+    .get(id, userId)
 }
 
-export function listFavoriteRows(db) {
+export function listFavoriteRows(db, userId) {
   return db
     .prepare(
       `SELECT * FROM favorites
+        WHERE user_id = ?
         ORDER BY (deleted_at IS NOT NULL) ASC, datetime(updated_at) DESC, id DESC`
     )
-    .all()
+    .all(userId)
 }
 
-export function addFavorite(db, giftIdInput) {
+export function addFavorite(db, giftIdInput, userId) {
   const giftId = Number(giftIdInput)
   if (!Number.isInteger(giftId) || giftId <= 0) {
     throw httpError(400, '礼物 id 不正确')
@@ -35,41 +38,45 @@ export function addFavorite(db, giftIdInput) {
   if (!gift) throw httpError(404, '礼物不存在')
 
   const active = db
-    .prepare('SELECT * FROM favorites WHERE gift_id = ? AND deleted_at IS NULL LIMIT 1')
-    .get(giftId)
+    .prepare(
+      `SELECT * FROM favorites
+        WHERE user_id = ? AND gift_id = ? AND deleted_at IS NULL
+        LIMIT 1`
+    )
+    .get(userId, giftId)
   if (active) throw httpError(409, '这件礼物已经在仓库里了')
 
   const deleted = db
     .prepare(
       `SELECT * FROM favorites
-        WHERE gift_id = ? AND deleted_at IS NOT NULL
+        WHERE user_id = ? AND gift_id = ? AND deleted_at IS NOT NULL
         ORDER BY datetime(deleted_at) DESC, id DESC
         LIMIT 1`
     )
-    .get(giftId)
+    .get(userId, giftId)
 
   if (deleted) {
     db.prepare(
       `UPDATE favorites
           SET deleted_at = NULL, status = 'wishlist', updated_at = datetime('now')
-        WHERE id = ?`
-    ).run(deleted.id)
-    return getFavoriteRow(db, deleted.id)
+        WHERE id = ? AND user_id = ?`
+    ).run(deleted.id, userId)
+    return getFavoriteRow(db, deleted.id, userId)
   }
 
   const result = db
     .prepare(
-      `INSERT INTO favorites (gift_id, status)
-       VALUES (?, 'wishlist')`
+      `INSERT INTO favorites (user_id, gift_id, status)
+       VALUES (?, ?, 'wishlist')`
     )
-    .run(giftId)
+    .run(userId, giftId)
 
-  return getFavoriteRow(db, Number(result.lastInsertRowid))
+  return getFavoriteRow(db, Number(result.lastInsertRowid), userId)
 }
 
-export function updateFavorite(db, idInput, patch) {
+export function updateFavorite(db, idInput, patch, userId) {
   const id = toFavoriteId(idInput)
-  const row = getFavoriteRow(db, id)
+  const row = getFavoriteRow(db, id, userId)
   if (!row) throw httpError(404, '收藏不存在')
   if (row.deleted_at) throw httpError(409, '已删除的收藏需要先恢复才能编辑')
 
@@ -123,49 +130,48 @@ export function updateFavorite(db, idInput, patch) {
   }
 
   updates.push("updated_at = datetime('now')")
-  db.prepare(`UPDATE favorites SET ${updates.join(', ')} WHERE id = ?`).run(
-    ...values,
-    id
-  )
+  db.prepare(
+    `UPDATE favorites SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`
+  ).run(...values, id, userId)
 
-  return getFavoriteRow(db, id)
+  return getFavoriteRow(db, id, userId)
 }
 
-export function deleteFavorite(db, idInput) {
+export function deleteFavorite(db, idInput, userId) {
   const id = toFavoriteId(idInput)
-  const row = getFavoriteRow(db, id)
+  const row = getFavoriteRow(db, id, userId)
   if (!row) throw httpError(404, '收藏不存在')
   if (row.deleted_at) return row
 
   db.prepare(
     `UPDATE favorites
         SET deleted_at = datetime('now'), updated_at = datetime('now')
-      WHERE id = ?`
-  ).run(id)
+      WHERE id = ? AND user_id = ?`
+  ).run(id, userId)
 
-  return getFavoriteRow(db, id)
+  return getFavoriteRow(db, id, userId)
 }
 
-export function restoreFavorite(db, idInput) {
+export function restoreFavorite(db, idInput, userId) {
   const id = toFavoriteId(idInput)
-  const row = getFavoriteRow(db, id)
+  const row = getFavoriteRow(db, id, userId)
   if (!row) throw httpError(404, '收藏不存在')
   if (!row.deleted_at) return row
 
   const active = db
     .prepare(
       `SELECT id FROM favorites
-        WHERE gift_id = ? AND deleted_at IS NULL AND id <> ?
+        WHERE user_id = ? AND gift_id = ? AND deleted_at IS NULL AND id <> ?
         LIMIT 1`
     )
-    .get(row.gift_id, id)
+    .get(userId, row.gift_id, id)
   if (active) throw httpError(409, '这件礼物已经有另一条有效收藏')
 
   db.prepare(
     `UPDATE favorites
         SET deleted_at = NULL, updated_at = datetime('now')
-      WHERE id = ?`
-  ).run(id)
+      WHERE id = ? AND user_id = ?`
+  ).run(id, userId)
 
-  return getFavoriteRow(db, id)
+  return getFavoriteRow(db, id, userId)
 }

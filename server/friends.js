@@ -83,14 +83,15 @@ export function validateFriendInput(input, now = new Date()) {
   return { name, month, day, year, gender }
 }
 
-export function listFriends(db, now = new Date()) {
+export function listFriends(db, userId, now = new Date()) {
   const rows = db
     .prepare(
       `SELECT id, name, birth_month, birth_day, birth_year, gender, created_at
          FROM friends
+        WHERE user_id = ?
         ORDER BY id ASC`
     )
-    .all()
+    .all(userId)
 
   const friends = rows.map((row) => mapFriend(row, now))
   friends.sort((a, b) => {
@@ -109,16 +110,16 @@ export function listFriends(db, now = new Date()) {
   }
 }
 
-export function addFriend(db, input, now = new Date()) {
+export function addFriend(db, input, userId, now = new Date()) {
   const friend = validateFriendInput(input, now)
 
   const duplicate = db
     .prepare(
       `SELECT id FROM friends
-        WHERE name = ? AND birth_month = ? AND birth_day = ?
+        WHERE user_id = ? AND name = ? AND birth_month = ? AND birth_day = ?
         LIMIT 1`
     )
-    .get(friend.name, friend.month, friend.day)
+    .get(userId, friend.name, friend.month, friend.day)
 
   if (duplicate) {
     throw httpError(409, `已经记录过「${friend.name}」在 ${friend.month} 月 ${friend.day} 日的生日`)
@@ -126,28 +127,36 @@ export function addFriend(db, input, now = new Date()) {
 
   const result = db
     .prepare(
-      `INSERT INTO friends (name, birth_month, birth_day, birth_year, gender)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO friends (user_id, name, birth_month, birth_day, birth_year, gender)
+       VALUES (?, ?, ?, ?, ?, ?)`
     )
-    .run(friend.name, friend.month, friend.day, friend.year, friend.gender)
+    .run(userId, friend.name, friend.month, friend.day, friend.year, friend.gender)
 
   const row = db
     .prepare(
       `SELECT id, name, birth_month, birth_day, birth_year, gender, created_at
-         FROM friends WHERE id = ?`
+         FROM friends WHERE id = ? AND user_id = ?`
     )
-    .get(Number(result.lastInsertRowid))
+    .get(Number(result.lastInsertRowid), userId)
 
   return mapFriend(row, now)
 }
 
-export function updateFriendGender(db, idInput, genderInput, now = new Date()) {
+export function updateFriendGender(
+  db,
+  idInput,
+  genderInput,
+  userId,
+  now = new Date()
+) {
   const id = Number(idInput)
   if (!Number.isInteger(id) || id <= 0) {
     throw httpError(400, '好友 id 不正确')
   }
 
-  const row = db.prepare('SELECT id FROM friends WHERE id = ?').get(id)
+  const row = db
+    .prepare('SELECT id FROM friends WHERE id = ? AND user_id = ?')
+    .get(id, userId)
   if (!row) throw httpError(404, '好友不存在')
 
   let gender = null
@@ -163,15 +172,16 @@ export function updateFriendGender(db, idInput, genderInput, now = new Date()) {
   }
 
   db.prepare(
-    `UPDATE friends SET gender = ?, updated_at = datetime('now') WHERE id = ?`
-  ).run(gender, id)
+    `UPDATE friends SET gender = ?, updated_at = datetime('now')
+      WHERE id = ? AND user_id = ?`
+  ).run(gender, id, userId)
 
   const updated = db
     .prepare(
       `SELECT id, name, birth_month, birth_day, birth_year, gender, created_at
-         FROM friends WHERE id = ?`
+         FROM friends WHERE id = ? AND user_id = ?`
     )
-    .get(id)
+    .get(id, userId)
 
   return mapFriend(updated, now)
 }

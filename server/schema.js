@@ -1,6 +1,26 @@
 export const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS users (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  email         TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+
 CREATE TABLE IF NOT EXISTS friends (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
   name        TEXT NOT NULL,
   birth_month INTEGER NOT NULL CHECK (birth_month BETWEEN 1 AND 12),
   birth_day   INTEGER NOT NULL CHECK (birth_day BETWEEN 1 AND 31),
@@ -49,6 +69,7 @@ CREATE INDEX IF NOT EXISTS idx_gift_tags_tag ON gift_tags(tag_id);
 
 CREATE TABLE IF NOT EXISTS favorites (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id      INTEGER REFERENCES users(id) ON DELETE CASCADE,
   gift_id      INTEGER NOT NULL REFERENCES gifts(id) ON DELETE CASCADE,
   status       TEXT NOT NULL DEFAULT 'wishlist' CHECK (status IN ('wishlist', 'gifted')),
   channel      TEXT,
@@ -58,13 +79,11 @@ CREATE TABLE IF NOT EXISTS favorites (
   updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_favorites_active_gift
-  ON favorites(gift_id) WHERE deleted_at IS NULL;
-
 CREATE INDEX IF NOT EXISTS idx_favorites_deleted ON favorites(deleted_at);
 
 CREATE TABLE IF NOT EXISTS reviews (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
   gift_id    INTEGER NOT NULL REFERENCES gifts(id) ON DELETE CASCADE,
   rating     INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
   comment    TEXT,

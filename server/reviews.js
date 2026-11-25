@@ -36,16 +36,16 @@ function mapReview(row) {
   }
 }
 
-export function getReviewSummary(db, giftIdInput) {
+export function getReviewSummary(db, giftIdInput, userId) {
   const giftId = toGiftId(giftIdInput)
   ensureGift(db, giftId)
 
   const row = db
     .prepare(
       `SELECT COUNT(*) AS count, COALESCE(SUM(rating), 0) AS total
-         FROM reviews WHERE gift_id = ?`
+         FROM reviews WHERE gift_id = ? AND user_id = ?`
     )
-    .get(giftId)
+    .get(giftId, userId)
 
   const count = Number(row.count)
   const total = Number(row.total)
@@ -60,17 +60,17 @@ export function getReviewSummary(db, giftIdInput) {
   }
 }
 
-export function getGiftReviewData(db, giftIdInput) {
-  const summary = getReviewSummary(db, giftIdInput)
+export function getGiftReviewData(db, giftIdInput, userId) {
+  const summary = getReviewSummary(db, giftIdInput, userId)
 
   const rows = db
     .prepare(
       `SELECT id, gift_id, rating, comment, image_path, created_at
          FROM reviews
-        WHERE gift_id = ?
+        WHERE gift_id = ? AND user_id = ?
         ORDER BY datetime(created_at) DESC, id DESC`
     )
-    .all(summary.giftId)
+    .all(summary.giftId, userId)
 
   const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
   for (const row of rows) {
@@ -117,7 +117,7 @@ function detectImageType(buffer) {
   return null
 }
 
-function saveImage(db, image) {
+function saveImage(image) {
   if (!image || typeof image !== 'object') return null
 
   const data = typeof image.data === 'string' ? image.data : ''
@@ -149,7 +149,7 @@ function saveImage(db, image) {
   }
 }
 
-export function createReview(db, giftIdInput, input) {
+export function createReview(db, giftIdInput, input, userId) {
   const giftId = toGiftId(giftIdInput)
   ensureGift(db, giftId)
 
@@ -167,25 +167,25 @@ export function createReview(db, giftIdInput, input) {
     throw httpError(400, '评价文字不能超过 1000 个字')
   }
 
-  const saved = saveImage(db, input.image)
+  const saved = saveImage(input.image)
   try {
     const result = db
       .prepare(
-        `INSERT INTO reviews (gift_id, rating, comment, image_path)
-         VALUES (?, ?, ?, ?)`
+        `INSERT INTO reviews (user_id, gift_id, rating, comment, image_path)
+         VALUES (?, ?, ?, ?, ?)`
       )
-      .run(giftId, rating, comment || null, saved?.imagePath ?? null)
+      .run(userId, giftId, rating, comment || null, saved?.imagePath ?? null)
 
     const row = db
       .prepare(
         `SELECT id, gift_id, rating, comment, image_path, created_at
-           FROM reviews WHERE id = ?`
+           FROM reviews WHERE id = ? AND user_id = ?`
       )
-      .get(Number(result.lastInsertRowid))
+      .get(Number(result.lastInsertRowid), userId)
 
     return {
       review: mapReview(row),
-      summary: getReviewSummary(db, giftId)
+      summary: getReviewSummary(db, giftId, userId)
     }
   } catch (error) {
     if (saved?.filePath) {
