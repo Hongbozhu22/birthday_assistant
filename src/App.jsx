@@ -76,6 +76,7 @@ function App() {
   const [authStatus, setAuthStatus] = useState('checking')
   const [user, setUser] = useState(null)
   const [authError, setAuthError] = useState('')
+  const [accountOpen, setAccountOpen] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -253,19 +254,24 @@ function App() {
     } catch {
       // 即使接口失败也在前端退出
     } finally {
-      setUser(null)
-      setAuthStatus('guest')
-      setAuthError('')
-      setStatus('idle')
-      setGiftsData(null)
-      setFriendsData(null)
-      setFavoritesData(null)
-      setView('birthdays')
-      setDetailGiftId(null)
-      setSelectedTagIds(new Set())
-      setPriceKey('all')
-      setToast(null)
+      clearClientSession()
     }
+  }
+
+  function clearClientSession() {
+    setUser(null)
+    setAuthStatus('guest')
+    setAuthError('')
+    setStatus('idle')
+    setGiftsData(null)
+    setFriendsData(null)
+    setFavoritesData(null)
+    setView('birthdays')
+    setDetailGiftId(null)
+    setSelectedTagIds(new Set())
+    setPriceKey('all')
+    setToast(null)
+    setAccountOpen(false)
   }
 
   function openGift(giftId) {
@@ -492,19 +498,17 @@ function App() {
               仓库
             </button>
           </nav>
-          <div className="account-menu">
-            <span className="account-email" title={user.email}>
-              {user.email}
+          <button
+            className="account-button"
+            type="button"
+            onClick={() => setAccountOpen(true)}
+            title={user.email}
+          >
+            <span className="account-avatar" aria-hidden="true">
+              {user.email.slice(0, 1).toUpperCase()}
             </span>
-            <button
-              className="account-logout"
-              type="button"
-              onClick={handleLogout}
-              title="退出登录"
-            >
-              退出
-            </button>
-          </div>
+            <span className="account-email">{user.email}</span>
+          </button>
         </div>
       </header>
 
@@ -1161,11 +1165,231 @@ function App() {
         <span>价格均为品类参考，非实时售价</span>
       </footer>
 
+      {accountOpen && (
+        <AccountModal
+          user={user}
+          onClose={() => setAccountOpen(false)}
+          onLogout={handleLogout}
+          onDeleted={clearClientSession}
+          onToast={showToast}
+        />
+      )}
+
       {toast && (
         <div className={`toast ${toast.type}`} role="status">
           {toast.message}
         </div>
       )}
+    </div>
+  )
+}
+
+function AccountModal({ user, onClose, onLogout, onDeleted, onToast }) {
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' })
+  const [changingPassword, setChangingPassword] = useState(false)
+
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deleteConfirm, setDeleteConfirm] = useState('')
+  const [deleteError, setDeleteError] = useState('')
+  const [deleting, setDeleting] = useState(false)
+
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
+  async function handleChangePassword(event) {
+    event.preventDefault()
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage({ type: 'error', text: '两次输入的新密码不一致' })
+      return
+    }
+
+    setChangingPassword(true)
+    setPasswordMessage({ type: '', text: '' })
+    try {
+      await fetchJson('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentPassword,
+          newPassword
+        })
+      })
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      setPasswordMessage({ type: 'success', text: '密码已更新' })
+      onToast?.('密码已更新，其他设备需要重新登录')
+    } catch (error) {
+      setPasswordMessage({
+        type: 'error',
+        text: error.message || '密码修改失败'
+      })
+    } finally {
+      setChangingPassword(false)
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (deleteConfirm.trim() !== '删除') return
+
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await fetchJson('/api/auth/delete-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: deletePassword })
+      })
+      onDeleted()
+      onToast?.('账号与账号数据已删除')
+    } catch (error) {
+      setDeleteError(error.message || '注销失败，请重试')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <section
+        className="account-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="账号设置"
+      >
+        <div className="account-modal-head">
+          <div>
+            <p className="section-kicker">ACCOUNT</p>
+            <h2>账号设置</h2>
+            <p className="account-modal-email">{user.email}</p>
+          </div>
+          <button
+            className="modal-close"
+            type="button"
+            onClick={onClose}
+            aria-label="关闭账号设置"
+          >
+            ×
+          </button>
+        </div>
+
+        <section className="account-section">
+          <h3>修改密码</h3>
+          <form className="account-form" onSubmit={handleChangePassword}>
+            <label className="auth-field">
+              <span>当前密码</span>
+              <input
+                type="password"
+                value={currentPassword}
+                required
+                autoComplete="current-password"
+                onChange={(event) => setCurrentPassword(event.target.value)}
+              />
+            </label>
+            <div className="account-field-row">
+              <label className="auth-field">
+                <span>新密码</span>
+                <input
+                  type="password"
+                  value={newPassword}
+                  required
+                  minLength={8}
+                  maxLength={128}
+                  autoComplete="new-password"
+                  onChange={(event) => setNewPassword(event.target.value)}
+                />
+              </label>
+              <label className="auth-field">
+                <span>再次输入</span>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  required
+                  minLength={8}
+                  maxLength={128}
+                  autoComplete="new-password"
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                />
+              </label>
+            </div>
+            {passwordMessage.text && (
+              <p className={`form-message ${passwordMessage.type}`} role="status">
+                {passwordMessage.text}
+              </p>
+            )}
+            <button
+              className="button button-primary account-submit"
+              type="submit"
+              disabled={changingPassword}
+            >
+              {changingPassword ? '更新中…' : '更新密码'}
+            </button>
+          </form>
+        </section>
+
+        <section className="account-section account-danger">
+          <h3>注销账号</h3>
+          <p>
+            会永久删除你的好友、仓库、评价和上传图片，无法恢复。输入密码并在下方输入“删除”确认。
+          </p>
+          <div className="account-field-row">
+            <label className="auth-field">
+              <span>密码</span>
+              <input
+                type="password"
+                value={deletePassword}
+                autoComplete="current-password"
+                onChange={(event) => setDeletePassword(event.target.value)}
+              />
+            </label>
+            <label className="auth-field">
+              <span>确认文字</span>
+              <input
+                type="text"
+                value={deleteConfirm}
+                placeholder="输入：删除"
+                onChange={(event) => setDeleteConfirm(event.target.value)}
+              />
+            </label>
+          </div>
+          {deleteError && (
+            <p className="form-message error" role="status">
+              {deleteError}
+            </p>
+          )}
+          <button
+            className="button account-delete-button"
+            type="button"
+            disabled={
+              deleting ||
+              !deletePassword ||
+              deleteConfirm.trim() !== '删除'
+            }
+            onClick={handleDeleteAccount}
+          >
+            {deleting ? '注销中…' : '永久注销账号'}
+          </button>
+        </section>
+
+        <div className="account-modal-foot">
+          <button className="button button-ghost" type="button" onClick={onLogout}>
+            退出登录
+          </button>
+        </div>
+      </section>
     </div>
   )
 }
@@ -1189,8 +1413,18 @@ function AuthScreen({ onAuthed, initialError }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
+  const [inviteRequired, setInviteRequired] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    fetchJson('/api/auth/config')
+      .then((payload) => setInviteRequired(Boolean(payload.inviteRequired)))
+      .catch(() => {
+        // 配置读取失败时按开放注册处理，提交阶段仍会校验
+      })
+  }, [])
 
   function switchMode(nextMode) {
     setMode(nextMode)
@@ -1213,7 +1447,7 @@ function AuthScreen({ onAuthed, initialError }) {
       const payload = await fetchJson(`/api/auth/${mode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password, inviteCode })
       })
       onAuthed(payload.user)
     } catch (authSubmitError) {
@@ -1340,6 +1574,20 @@ function AuthScreen({ onAuthed, initialError }) {
               </label>
             )}
 
+            {mode === 'register' && inviteRequired && (
+              <label className="auth-field">
+                <span>邀请码</span>
+                <input
+                  type="text"
+                  value={inviteCode}
+                  required
+                  autoComplete="off"
+                  placeholder="向管理员获取邀请码"
+                  onChange={(event) => setInviteCode(event.target.value)}
+                />
+              </label>
+            )}
+
             {(error || initialError) && (
               <p className="form-message error auth-error" role="alert">
                 {error || initialError}
@@ -1363,7 +1611,9 @@ function AuthScreen({ onAuthed, initialError }) {
 
           <p className="auth-card-note">
             {mode === 'register'
-              ? '如果是本机第一个账号，已有的好友、仓库和评价会自动归入这个账号。'
+              ? inviteRequired
+                ? '当前部署开启了邀请码注册，请向管理员获取邀请码。'
+                : '如果是本机第一个账号，已有的好友、仓库和评价会自动归入这个账号。'
               : '还没有账号？切换到“注册”，用邮箱创建一个。'}
           </p>
         </section>
@@ -1648,7 +1898,7 @@ function GiftDetail({ gift, onBack, onToast }) {
             <div className="detail-score">
               <strong>{score}</strong>
               <div>
-                <span>贝叶斯评分 / 10</span>
+                <span>全站贝叶斯评分 / 10</span>
                 <small>{ratingCount} 条评价</small>
               </div>
             </div>
@@ -1661,7 +1911,7 @@ function GiftDetail({ gift, onBack, onToast }) {
           <div className="review-list-head">
             <div>
               <p className="section-kicker">REVIEWS</p>
-              <h2>评价列表</h2>
+              <h2>全站评价</h2>
             </div>
             <span className="review-count">{ratingCount} 条</span>
           </div>
@@ -1699,13 +1949,16 @@ function GiftDetail({ gift, onBack, onToast }) {
               {reviewData.reviews.map((review) => (
                 <article className="review-item" key={review.id}>
                   <div className="review-item-head">
-                    <span
-                      className="review-stars"
-                      aria-label={`${review.rating} 星`}
-                    >
-                      {'★'.repeat(review.rating)}
-                      {'☆'.repeat(5 - review.rating)}
-                    </span>
+                    <div className="review-item-meta">
+                      <span className="review-author">匿名用户</span>
+                      <span
+                        className="review-stars"
+                        aria-label={`${review.rating} 星`}
+                      >
+                        {'★'.repeat(review.rating)}
+                        {'☆'.repeat(5 - review.rating)}
+                      </span>
+                    </div>
                     <span className="review-date">
                       {formatReviewDate(review.createdAt)}
                     </span>
@@ -1738,7 +1991,7 @@ function GiftDetail({ gift, onBack, onToast }) {
           <h3>写一条评价</h3>
           <p className="review-form-hint">
             评分由后端做贝叶斯平均，单条 5 星不会直接显示 10 分。
-            评价仅当前账号可见。
+            评价会匿名展示给所有登录用户，并计入全站评分。
           </p>
 
           <form className="review-form" onSubmit={handleSubmit}>

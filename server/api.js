@@ -13,9 +13,11 @@ import { UPLOADS_DIR } from './paths.js'
 import { createReview, getGiftReviewData } from './reviews.js'
 import {
   assertLoginAllowed,
+  changePassword,
   clearLoginFailures,
   clearSessionCookie,
   createSession,
+  deleteAccount,
   destroySession,
   getSessionUser,
   loginUser,
@@ -268,6 +270,7 @@ export function createApiMiddleware() {
         '/api/auth/register',
         '/api/auth/login',
         '/api/auth/logout',
+        '/api/auth/config',
         '/api/health'
       ])
       const isPublic = publicPaths.has(url.pathname)
@@ -281,12 +284,30 @@ export function createApiMiddleware() {
         }
       }
 
+      if (url.pathname === '/api/auth/config') {
+        if (req.method !== 'GET') {
+          methodNotAllowed(res, ['GET'])
+          return
+        }
+        sendJson(res, 200, {
+          inviteRequired: Boolean(process.env.INVITE_CODE)
+        })
+        return
+      }
+
       if (url.pathname === '/api/auth/register') {
         if (req.method !== 'POST') {
           methodNotAllowed(res, ['POST'])
           return
         }
         const body = await readJsonBody(req)
+        if (
+          process.env.INVITE_CODE &&
+          String(body?.inviteCode ?? '') !== process.env.INVITE_CODE
+        ) {
+          sendJson(res, 403, { error: '邀请码不正确或已过期' })
+          return
+        }
         const user = await registerUser(db, body?.email, body?.password)
         const session = createSession(db, user.id)
         setSessionCookie(req, res, session.token, session.expiresAt)
@@ -331,6 +352,36 @@ export function createApiMiddleware() {
         return
       }
 
+      if (url.pathname === '/api/auth/change-password') {
+        if (req.method !== 'POST') {
+          methodNotAllowed(res, ['POST'])
+          return
+        }
+        const body = await readJsonBody(req)
+        await changePassword(
+          db,
+          currentUser.id,
+          body?.currentPassword,
+          body?.newPassword
+        )
+        const session = createSession(db, currentUser.id)
+        setSessionCookie(req, res, session.token, session.expiresAt)
+        sendJson(res, 200, { ok: true })
+        return
+      }
+
+      if (url.pathname === '/api/auth/delete-account') {
+        if (req.method !== 'POST') {
+          methodNotAllowed(res, ['POST'])
+          return
+        }
+        const body = await readJsonBody(req)
+        const result = await deleteAccount(db, currentUser.id, body?.password)
+        clearSessionCookie(req, res)
+        sendJson(res, 200, { ok: true, ...result })
+        return
+      }
+
       const uploadMatch = url.pathname.match(
         /^\/api\/uploads\/([A-Za-z0-9_-]+\.(png|jpe?g|webp|gif))$/
       )
@@ -340,10 +391,8 @@ export function createApiMiddleware() {
           return
         }
         const owned = db
-          .prepare(
-            'SELECT id FROM reviews WHERE image_path = ? AND user_id = ? LIMIT 1'
-          )
-          .get(url.pathname, currentUser.id)
+          .prepare('SELECT id FROM reviews WHERE image_path = ? LIMIT 1')
+          .get(url.pathname)
         if (!owned) {
           sendJson(res, 404, { error: 'Image Not Found' })
           return
@@ -379,7 +428,7 @@ export function createApiMiddleware() {
         const giftId = Number(reviewMatch[1])
 
         if (req.method === 'GET') {
-          sendJson(res, 200, getGiftReviewData(db, giftId, currentUser.id))
+          sendJson(res, 200, getGiftReviewData(db, giftId))
           return
         }
 

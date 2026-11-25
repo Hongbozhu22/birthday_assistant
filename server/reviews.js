@@ -36,16 +36,16 @@ function mapReview(row) {
   }
 }
 
-export function getReviewSummary(db, giftIdInput, userId) {
+export function getReviewSummary(db, giftIdInput) {
   const giftId = toGiftId(giftIdInput)
   ensureGift(db, giftId)
 
   const row = db
     .prepare(
       `SELECT COUNT(*) AS count, COALESCE(SUM(rating), 0) AS total
-         FROM reviews WHERE gift_id = ? AND user_id = ?`
+         FROM reviews WHERE gift_id = ?`
     )
-    .get(giftId, userId)
+    .get(giftId)
 
   const count = Number(row.count)
   const total = Number(row.total)
@@ -60,17 +60,17 @@ export function getReviewSummary(db, giftIdInput, userId) {
   }
 }
 
-export function getGiftReviewData(db, giftIdInput, userId) {
-  const summary = getReviewSummary(db, giftIdInput, userId)
+export function getGiftReviewData(db, giftIdInput) {
+  const summary = getReviewSummary(db, giftIdInput)
 
   const rows = db
     .prepare(
       `SELECT id, gift_id, rating, comment, image_path, created_at
          FROM reviews
-        WHERE gift_id = ? AND user_id = ?
+        WHERE gift_id = ?
         ORDER BY datetime(created_at) DESC, id DESC`
     )
-    .all(summary.giftId, userId)
+    .all(summary.giftId)
 
   const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
   for (const row of rows) {
@@ -185,7 +185,7 @@ export function createReview(db, giftIdInput, input, userId) {
 
     return {
       review: mapReview(row),
-      summary: getReviewSummary(db, giftId, userId)
+      summary: getReviewSummary(db, giftId)
     }
   } catch (error) {
     if (saved?.filePath) {

@@ -4,7 +4,10 @@ import {
   scrypt as scryptCallback,
   timingSafeEqual
 } from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
 import { promisify } from 'node:util'
+import { UPLOADS_DIR } from './paths.js'
 
 const scrypt = promisify(scryptCallback)
 const SESSION_COOKIE = 'gift_session'
@@ -26,22 +29,26 @@ export function normalizeEmail(value) {
     .toLowerCase()
 }
 
-export function validateCredentials(emailValue, passwordValue) {
-  const email = normalizeEmail(emailValue)
+function validatePassword(passwordValue) {
   const password = String(passwordValue ?? '')
-
-  if (!email) throw httpError(400, '请填写邮箱')
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw httpError(400, '邮箱格式不正确')
-  }
   if ([...password].length < 8) {
     throw httpError(400, '密码至少需要 8 个字符')
   }
   if ([...password].length > 128) {
     throw httpError(400, '密码不能超过 128 个字符')
   }
+  return password
+}
 
-  return { email, password }
+export function validateCredentials(emailValue, passwordValue) {
+  const email = normalizeEmail(emailValue)
+
+  if (!email) throw httpError(400, '请填写邮箱')
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw httpError(400, '邮箱格式不正确')
+  }
+
+  return { email, password: validatePassword(passwordValue) }
 }
 
 async function hashPassword(password) {
@@ -136,6 +143,76 @@ export async function loginUser(db, emailValue, passwordValue) {
   if (!valid) throw httpError(401, '邮箱或密码不正确')
 
   return mapUser(row)
+}
+
+export async function changePassword(
+  db,
+  userId,
+  currentPassword,
+  newPassword
+) {
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(userId)
+  if (!row) throw httpError(404, '账号不存在')
+
+  const current = String(currentPassword ?? '')
+  if (!current) throw httpError(400, '请填写当前密码')
+  if (!(await verifyPassword(current, row.password_hash))) {
+    throw httpError(401, '当前密码不正确')
+  }
+
+  const next = validatePassword(newPassword)
+  const passwordHash = await hashPassword(next)
+
+  db.prepare(
+    `UPDATE users SET password_hash = ?, updated_at = datetime('now')
+      WHERE id = ?`
+  ).run(passwordHash, userId)
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId)
+}
+
+export async function deleteAccount(db, userId, passwordValue) {
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(userId)
+  if (!row) throw httpError(404, '账号不存在')
+
+  const password = String(passwordValue ?? '')
+  if (!password) throw httpError(400, '请输入密码确认删除')
+  if (!(await verifyPassword(password, row.password_hash))) {
+    throw httpError(401, '密码不正确')
+  }
+
+  const images = db
+    .prepare(
+      "SELECT image_path FROM reviews WHERE user_id = ? AND image_path IS NOT NULL"
+    )
+    .all(userId)
+  const reviewCount = Number(
+    db.prepare('SELECT COUNT(*) AS count FROM reviews WHERE user_id = ?').get(userId)
+      .count
+  )
+
+  db.exec('BEGIN')
+  try {
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId)
+    db.prepare('DELETE FROM reviews WHERE user_id = ?').run(userId)
+    db.prepare('DELETE FROM favorites WHERE user_id = ?').run(userId)
+    db.prepare('DELETE FROM friends WHERE user_id = ?').run(userId)
+    db.prepare('DELETE FROM users WHERE id = ?').run(userId)
+    db.exec('COMMIT')
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+
+  for (const image of images) {
+    try {
+      const filePath = path.join(UPLOADS_DIR, path.basename(image.image_path))
+      if (fs.existsSync(filePath)) fs.rmSync(filePath, { force: true })
+    } catch {
+      // 文件删除失败不应阻断账号注销
+    }
+  }
+
+  return { deletedReviews: reviewCount }
 }
 
 export function createSession(db, userId) {

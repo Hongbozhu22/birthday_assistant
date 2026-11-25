@@ -2,21 +2,24 @@
 
 > 朋友生日快到了，却总是临时翻聊天记录想送什么？礼物助手把生日提醒、礼物灵感、仓库和真实评价放进一个多账号的小工具里。
 
-非商业个人项目。支持邮箱 + 密码注册登录，每个账号的好友、仓库和评价互相隔离；数据保存在部署服务器的 SQLite 中。
+非商业个人项目。支持邮箱 + 密码注册登录；好友和仓库按账号隔离，评价与评分全站共享并匿名展示。数据保存在部署服务器的 SQLite 中。
 
 ![登录](docs/screenshot-login.png)
 
 ## 账号与登录
 
 - 邮箱 + 密码注册，注册成功后自动登录
+- 注册可以配置邀请码：设置环境变量 `INVITE_CODE` 后，注册必须填写正确邀请码
 - 密码使用 Node.js `scrypt` 加盐哈希保存，不存明文
 - 登录态使用 `HttpOnly` + `SameSite=Lax` 的会话 Cookie，有效期 30 天
-- 每个账号只能访问自己的好友、仓库与评价；跨账号请求返回 404
-- 退出登录会删除服务端会话
+- 每个账号的好友、仓库互相隔离；跨账号请求返回 404
+- 评价与评分全站共享，评论匿名展示，图片对所有登录用户可见
+- 支持在账号设置里修改密码、退出登录、永久注销账号
+- 注销账号会删除该账号的好友、仓库、评价、会话和上传图片
 - 单用户版本的旧数据，会在**第一个账号注册时**自动归入该账号
 - 登录尝试有频率限制；生产环境必须启用 HTTPS，并设置 `COOKIE_SECURE=1`
 
-目前**没有**做邮箱验证、找回密码、第三方登录和账号注销。邮箱实际上只作为登录名使用，不会发送验证邮件。
+目前**没有**做邮箱验证、找回密码、第三方登录和昵称/头像。邮箱实际上只作为登录名使用，不会发送验证邮件。
 
 ## 功能
 
@@ -54,11 +57,11 @@
 
 - 商品详情页展示贝叶斯平均分（10 分制，保留一位小数）
 - 支持 1-5 星评分、文字评论和图片上传
-- 评论列表展示星级、文字、图片和日期
+- 评价列表展示星级、文字、图片和日期
 - 评分只在后端计算，前端只负责展示
 - 公式：`((C × m + Σ评分) / (C + n)) × 2`，其中 `C = 10`、`m = 3.5`
-- 评价按账号隔离，每个账号看到的是自己的评价与得分
-- 图片保存在 `data/uploads/`，通过登录态校验后由 `/api/uploads/:filename` 读取
+- 所有账号共享评价与全站评分，评论以“匿名用户”展示
+- 图片保存在 `data/uploads/`，登录后由 `/api/uploads/:filename` 读取
 
 ![商品详情与评价](docs/screenshot-detail.png)
 
@@ -132,12 +135,15 @@ npm run db:reset
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/auth/register` | 注册：`{ email, password }`，成功后自动登录 |
+| GET | `/api/auth/config` | 公开配置（是否开启邀请码） |
+| POST | `/api/auth/register` | 注册：`{ email, password, inviteCode? }`，成功后自动登录 |
 | POST | `/api/auth/login` | 登录：`{ email, password }` |
 | POST | `/api/auth/logout` | 退出并清除会话 |
 | GET | `/api/auth/me` | 当前登录账号 |
+| POST | `/api/auth/change-password` | 修改密码：`{ currentPassword, newPassword }` |
+| POST | `/api/auth/delete-account` | 注销账号：`{ password }` |
 | GET | `/api/gifts` | 礼物与标签数据 |
-| GET | `/api/gifts/:id/reviews` | 当前账号的评价列表、得分与星级分布 |
+| GET | `/api/gifts/:id/reviews` | 全站评价列表、贝叶斯得分与星级分布 |
 | POST | `/api/gifts/:id/reviews` | 提交评价：`{ rating, comment, image? }` |
 | GET | `/api/friends` | 当前账号的好友生日列表 |
 | POST | `/api/friends` | 添加好友：`{ name, month, day, gender?, year? }` |
@@ -147,7 +153,7 @@ npm run db:reset
 | PATCH | `/api/favorites/:id` | 更新状态 / 渠道 / 实际价格 |
 | DELETE | `/api/favorites/:id` | 软删除收藏 |
 | POST | `/api/favorites/:id/restore` | 恢复已删除的收藏 |
-| GET | `/api/uploads/:filename` | 读取当前账号的评价图片 |
+| GET | `/api/uploads/:filename` | 读取共享评价图片（需登录） |
 | GET | `/api/health` | 服务健康检查（仅返回礼物/标签数量） |
 
 ## 数据与隐私
@@ -155,7 +161,9 @@ npm run db:reset
 - 数据库：`data/gift-assistant.db`
 - 评价图片：`data/uploads/`
 - 账号密码只保存 `scrypt` 哈希；会话只保存 token 的 SHA-256 哈希
-- 好友、仓库、评价均按 `user_id` 隔离
+- 好友、仓库按 `user_id` 隔离
+- 评价与评分全站共享，评论匿名展示；评价图片对所有登录用户可见
+- 注销账号会同时删除该账号的数据库记录和上传图片
 - 部署在公网时，服务器管理员仍然可以直接读取数据库文件；这不是端到端加密工具
 - `data/` 下的数据库与图片已加入 `.gitignore`，不会进入 Git 仓库
 - 想清空数据可执行 `npm run db:reset`，或删除 `data/` 目录
@@ -175,8 +183,10 @@ npm run db:reset
 
 当前版本刻意没有做以下功能：
 
-- 邮箱验证、找回密码、修改密码
-- 账号注销与数据导出
+- 邮箱验证、找回密码
+- 昵称 / 头像与评价管理（当前评价匿名展示）
+- 邀请码管理后台（当前通过 `INVITE_CODE` 环境变量配置）
+- 账号数据导出
 - 视频评论、表情包 / 贴纸
 - 评论回复与点赞
 - 共享礼物清单、多人协作
@@ -190,7 +200,7 @@ npm run db:reset
 ```bash
 git init -b main
 git add .
-git commit -m "feat: 礼物助手 v0.2.0 账号版"
+git commit -m "feat: 礼物助手 v0.3.0 账号与共享评价"
 git remote add origin <your-repository-url>
 git push -u origin main
 ```
