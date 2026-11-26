@@ -1344,49 +1344,58 @@ function AccountModal({ user, onClose, onOpenAdmin, onLogout, onDeleted, onToast
           </section>
         )}
 
-        <section className="account-section account-danger">
-          <h3>注销账号</h3>
-          <p>
-            会永久删除你的好友、仓库、评价和上传图片，无法恢复。输入密码并在下方输入“删除”确认。
-          </p>
-          <div className="account-field-row">
-            <label className="auth-field">
-              <span>密码</span>
-              <input
-                type="password"
-                value={deletePassword}
-                autoComplete="current-password"
-                onChange={(event) => setDeletePassword(event.target.value)}
-              />
-            </label>
-            <label className="auth-field">
-              <span>确认文字</span>
-              <input
-                type="text"
-                value={deleteConfirm}
-                placeholder="输入：删除"
-                onChange={(event) => setDeleteConfirm(event.target.value)}
-              />
-            </label>
-          </div>
-          {deleteError && (
-            <p className="form-message error" role="status">
-              {deleteError}
+        {!user.isAdmin && (
+          <section className="account-section account-danger">
+            <h3>注销账号</h3>
+            <p>
+              会永久删除你的好友、仓库、评价和上传图片，无法恢复。输入密码并在下方输入“删除”确认。
             </p>
-          )}
-          <button
-            className="button account-delete-button"
-            type="button"
-            disabled={
-              deleting ||
-              !deletePassword ||
-              deleteConfirm.trim() !== '删除'
-            }
-            onClick={handleDeleteAccount}
-          >
-            {deleting ? '注销中…' : '永久注销账号'}
-          </button>
-        </section>
+            <div className="account-field-row">
+              <label className="auth-field">
+                <span>密码</span>
+                <input
+                  type="password"
+                  value={deletePassword}
+                  autoComplete="current-password"
+                  onChange={(event) => setDeletePassword(event.target.value)}
+                />
+              </label>
+              <label className="auth-field">
+                <span>确认文字</span>
+                <input
+                  type="text"
+                  value={deleteConfirm}
+                  placeholder="输入：删除"
+                  onChange={(event) => setDeleteConfirm(event.target.value)}
+                />
+              </label>
+            </div>
+            {deleteError && (
+              <p className="form-message error" role="status">
+                {deleteError}
+              </p>
+            )}
+            <button
+              className="button account-delete-button"
+              type="button"
+              disabled={
+                deleting ||
+                !deletePassword ||
+                deleteConfirm.trim() !== '删除'
+              }
+              onClick={handleDeleteAccount}
+            >
+              {deleting ? '注销中…' : '永久注销账号'}
+            </button>
+          </section>
+        )}
+
+        {user.isAdmin && (
+          <section className="account-section">
+            <h3>账号注销</h3>
+            <p>管理员账号不能自行注销，避免站点失去管理入口。</p>
+          </section>
+        )}
 
         <div className="account-modal-foot">
           <button className="button button-ghost" type="button" onClick={onLogout}>
