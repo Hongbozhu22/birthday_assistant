@@ -40,15 +40,56 @@ function validatePassword(passwordValue) {
   return password
 }
 
-export function validateCredentials(emailValue, passwordValue) {
+function validateEmailAddress(emailValue) {
   const email = normalizeEmail(emailValue)
-
   if (!email) throw httpError(400, '请填写邮箱')
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (email.length > 254) throw httpError(400, '邮箱地址过长')
+
+  const at = email.lastIndexOf('@')
+  if (at <= 0 || at === email.length - 1) {
     throw httpError(400, '邮箱格式不正确')
   }
 
-  return { email, password: validatePassword(passwordValue) }
+  const local = email.slice(0, at)
+  const domain = email.slice(at + 1)
+
+  if (
+    local.length > 64 ||
+    local.startsWith('.') ||
+    local.endsWith('.') ||
+    local.includes('..') ||
+    !/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/.test(local)
+  ) {
+    throw httpError(400, '邮箱格式不正确')
+  }
+
+  const labels = domain.split('.')
+  if (labels.length < 2) throw httpError(400, '邮箱格式不正确')
+
+  for (const label of labels) {
+    if (
+      !label ||
+      label.length > 63 ||
+      label.startsWith('-') ||
+      label.endsWith('-') ||
+      !/^[a-z0-9-]+$/.test(label)
+    ) {
+      throw httpError(400, '邮箱格式不正确')
+    }
+  }
+
+  if (!/^[a-z]{2,63}$/.test(labels[labels.length - 1])) {
+    throw httpError(400, '邮箱格式不正确')
+  }
+
+  return email
+}
+
+export function validateCredentials(emailValue, passwordValue) {
+  return {
+    email: validateEmailAddress(emailValue),
+    password: validatePassword(passwordValue)
+  }
 }
 
 async function hashPassword(password) {

@@ -1829,7 +1829,7 @@ function AuthScreen({ onAuthed, initialError }) {
           <p className="auth-card-hint">
             {mode === 'login'
               ? '用邮箱和密码进入你的生日与礼物记录。'
-              : '邮箱作为登录名，注册后自动分配用户名。'}
+              : '请填写真实可用的邮箱；邮箱是登录名，不会发送验证邮件。'}
           </p>
 
           <form className="auth-form" onSubmit={handleSubmit}>
@@ -1840,7 +1840,7 @@ function AuthScreen({ onAuthed, initialError }) {
                 value={email}
                 required
                 autoComplete="username"
-                placeholder="you@example.com"
+                placeholder="name@qq.com"
                 onChange={(event) => setEmail(event.target.value)}
               />
             </label>
