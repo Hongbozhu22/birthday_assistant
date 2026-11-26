@@ -3,7 +3,7 @@ import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { DB_PATH } from './paths.js'
 import { SCHEMA_SQL } from './schema.js'
-import { runSeed } from './seed/index.js'
+import { runSeed, runSeedAdditions } from './seed/index.js'
 
 /** @type {DatabaseSync | null} */
 let db = null
@@ -78,6 +78,11 @@ export function getDb() {
       db.exec('ROLLBACK')
       throw error
     }
+  }
+
+  const added = runSeedAdditions(db)
+  if (added > 0) {
+    console.log(`[db] 已补充 ${added} 条新礼物`)
   }
 
   return db

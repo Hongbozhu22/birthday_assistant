@@ -12,7 +12,18 @@ const SEARCH_HINTS = ['足球', '咖啡', '通勤', '露营', '香水', '高性�
 
 const RECIPIENT_OPTIONS = ['朋友', '恋人', '父母', '长辈', '同事', '孩子', '自己']
 
-const OCCASION_OPTIONS = ['生日', '节日', '纪念日', '日常惊喜', '感谢', '乔迁']
+const INTEREST_OPTIONS = [
+  '运动户外',
+  '数码电子',
+  '美妆香氛',
+  '潮玩手办',
+  '居家日用',
+  '书籍文具',
+  '美食饮品',
+  '配饰穿搭'
+]
+
+const OCCASION_OPTIONS = ['生日', '节日', '纪念日', '日常惊喜']
 
 const WAREHOUSE_TABS = [
   { key: 'all', label: '全部' },
@@ -74,12 +85,10 @@ function App() {
 
   const [selectedTagIds, setSelectedTagIds] = useState(() => new Set())
   const [keyword, setKeyword] = useState('')
-  const [typeKey, setTypeKey] = useState(null)
   const [recipientKey, setRecipientKey] = useState(null)
   const [interestKey, setInterestKey] = useState(null)
   const [occasionKey, setOccasionKey] = useState(null)
   const [expandedTags, setExpandedTags] = useState(() => new Set())
-  const [priceKey, setPriceKey] = useState('all')
 
   const [favoritePending, setFavoritePending] = useState(null)
   const [warehouseTab, setWarehouseTab] = useState('all')
@@ -227,39 +236,6 @@ function App() {
     return counts
   }, [giftsData])
 
-  const selectedTags = useMemo(
-    () => allTags.filter((tag) => selectedTagIds.has(tag.id)),
-    [allTags, selectedTagIds]
-  )
-
-  const styleTags = useMemo(() => {
-    const styleRoot = allTags.find(
-      (tag) => tag.parentId == null && tag.name === '风格'
-    )
-    if (!styleRoot) return []
-    return allTags.filter((tag) => tag.parentId === styleRoot.id)
-  }, [allTags])
-
-  const activeTypeTag = useMemo(
-    () => styleTags.find((tag) => tag.id === typeKey) ?? null,
-    [styleTags, typeKey]
-  )
-
-  const interestTags = useMemo(
-    () => rootTags.filter((tag) => tag.name !== '风格'),
-    [rootTags]
-  )
-
-  const activeInterestTag = useMemo(
-    () => interestTags.find((tag) => tag.id === interestKey) ?? null,
-    [interestTags, interestKey]
-  )
-
-  const activePrice = useMemo(
-    () => PRICE_BUCKETS.find((bucket) => bucket.key === priceKey) ?? PRICE_BUCKETS[0],
-    [priceKey]
-  )
-
   const filteredGifts = useMemo(() => {
     const gifts = giftsData?.gifts ?? []
     const terms = keyword.trim().toLowerCase().split(/\s+/).filter(Boolean)
@@ -269,6 +245,7 @@ function App() {
         const haystack = [
           gift.name,
           gift.category,
+          ...(gift.interests ?? []),
           gift.fitFor,
           gift.reason,
           gift.priceLabel,
@@ -290,34 +267,13 @@ function App() {
         return false
       }
 
-      if (
-        interestKey &&
-        !gift.tags.some((giftTag) => giftTag.id === interestKey)
-      ) {
+      if (interestKey && !(gift.interests ?? []).includes(interestKey)) {
         return false
       }
 
-      if (
-        activeTypeTag &&
-        !gift.tags.some((giftTag) => giftTag.id === activeTypeTag.id)
-      ) {
-        return false
-      }
-
-      if (activePrice.key === 'all') return true
-      return (
-        gift.priceMin < activePrice.max && gift.priceMax > activePrice.min
-      )
+      return true
     })
-  }, [
-    giftsData,
-    activePrice,
-    keyword,
-    recipientKey,
-    occasionKey,
-    interestKey,
-    activeTypeTag
-  ])
+  }, [giftsData, keyword, recipientKey, occasionKey, interestKey])
 
   function showView(nextView) {
     setView(nextView)
@@ -354,9 +310,7 @@ function App() {
     setView('birthdays')
     setDetailGiftId(null)
     setSelectedTagIds(new Set())
-    setPriceKey('all')
     setKeyword('')
-    setTypeKey(null)
     setRecipientKey(null)
     setInterestKey(null)
     setOccasionKey(null)
@@ -540,9 +494,7 @@ function App() {
 
   function clearFilters() {
     setSelectedTagIds(new Set())
-    setPriceKey('all')
     setKeyword('')
-    setTypeKey(null)
     setRecipientKey(null)
     setInterestKey(null)
     setOccasionKey(null)
@@ -816,7 +768,7 @@ function App() {
                     {giftsData.total} 件礼物 · 当前 {filteredGifts.length} 件符合
                   </p>
                 </div>
-                <span className="page-meta">对象 · 预算 · 类型 · 兴趣 · 场合</span>
+                <span className="page-meta">对象 · 兴趣方向 · 场景</span>
               </div>
 
               <div className="search-hero">
@@ -898,33 +850,13 @@ function App() {
                     onChange={setRecipientKey}
                   />
                   <FacetRow
-                    label="预算"
-                    options={PRICE_BUCKETS.filter((bucket) => bucket.key !== 'all').map(
-                      (bucket) => ({ value: bucket.key, label: bucket.label })
-                    )}
-                    value={priceKey === 'all' ? null : priceKey}
-                    onChange={(next) => setPriceKey(next ?? 'all')}
-                  />
-                  <FacetRow
-                    label="类型"
-                    options={styleTags.map((tag) => ({
-                      value: tag.id,
-                      label: tag.name
-                    }))}
-                    value={typeKey}
-                    onChange={setTypeKey}
-                  />
-                  <FacetRow
-                    label="兴趣"
-                    options={interestTags.map((tag) => ({
-                      value: tag.id,
-                      label: tag.name
-                    }))}
+                    label="兴趣方向"
+                    options={INTEREST_OPTIONS}
                     value={interestKey}
                     onChange={setInterestKey}
                   />
                   <FacetRow
-                    label="场合"
+                    label="场景"
                     options={OCCASION_OPTIONS}
                     value={occasionKey}
                     onChange={setOccasionKey}
@@ -940,9 +872,7 @@ function App() {
 
                 {(keyword ||
                   recipientKey ||
-                  priceKey !== 'all' ||
-                  activeTypeTag ||
-                  activeInterestTag ||
+                  interestKey ||
                   occasionKey) && (
                   <div className="selected-bar">
                     <span className="selected-label">已选</span>
@@ -968,36 +898,14 @@ function App() {
                         <span aria-hidden="true">×</span>
                       </button>
                     )}
-                    {priceKey !== 'all' && (
-                      <button
-                        type="button"
-                        className="selected-chip"
-                        onClick={() => setPriceKey('all')}
-                        title="移除预算"
-                      >
-                        预算：{activePrice.label}
-                        <span aria-hidden="true">×</span>
-                      </button>
-                    )}
-                    {activeTypeTag && (
-                      <button
-                        type="button"
-                        className="selected-chip"
-                        onClick={() => setTypeKey(null)}
-                        title="移除类型"
-                      >
-                        类型：{activeTypeTag.name}
-                        <span aria-hidden="true">×</span>
-                      </button>
-                    )}
-                    {activeInterestTag && (
+                    {interestKey && (
                       <button
                         type="button"
                         className="selected-chip"
                         onClick={() => setInterestKey(null)}
                         title="移除兴趣"
                       >
-                        兴趣：{activeInterestTag.name}
+                        兴趣：{interestKey}
                         <span aria-hidden="true">×</span>
                       </button>
                     )}
@@ -1006,9 +914,9 @@ function App() {
                         type="button"
                         className="selected-chip"
                         onClick={() => setOccasionKey(null)}
-                        title="移除场合"
+                        title="移除场景"
                       >
-                        场合：{occasionKey}
+                        场景：{occasionKey}
                         <span aria-hidden="true">×</span>
                       </button>
                     )}
@@ -1023,7 +931,7 @@ function App() {
                 )}
 
                 <p className="filter-note">
-                  先选对象、预算和场合，再用类型、兴趣或关键词缩小范围。价格仅作品类参考，不是实时售价。
+                  先选对象、兴趣方向和场景，再用关键词缩小范围。价格仅作品类参考，不是实时售价。
                 </p>
 
                 {filteredGifts.length > 0 ? (
@@ -1996,7 +1904,9 @@ function GiftDetail({ gift, isAdmin, onBack, onToast }) {
           className="detail-visual"
           style={{ '--from': gift.gradientFrom, '--to': gift.gradientTo }}
         >
-          <span className="detail-category">{gift.category}</span>
+          <span className="detail-category">
+            {gift.interests?.[0] ?? gift.category}
+          </span>
           <span className="detail-emoji" role="img" aria-label={gift.name}>
             {gift.emoji}
           </span>
@@ -2306,7 +2216,7 @@ function WarehouseItem({ favorite, onUpdate, onDelete, onRestore }) {
               {deleted && <span className="status-badge deleted">已删除</span>}
             </div>
             <p className="warehouse-meta">
-              {gift.category} · 参考价 {gift.priceLabel} · {gift.fitFor}
+              {gift.interests?.[0] ?? gift.category} · 参考价 {gift.priceLabel} · {gift.fitFor}
             </p>
           </div>
         </div>
@@ -2419,7 +2329,9 @@ function GiftCard({ gift, favorite, pending, onFavorite, onOpen }) {
       <div className="gift-row-main">
         <div className="gift-row-head">
           <h3>{gift.name}</h3>
-          <span className="gift-row-category">{gift.category}</span>
+          <span className="gift-row-category">
+            {gift.interests?.[0] ?? gift.category}
+          </span>
         </div>
         <p className="gift-row-fit">
           <span>适合</span>

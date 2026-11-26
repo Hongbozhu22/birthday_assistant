@@ -226,6 +226,7 @@ export function getCatalog(db = getDb()) {
       gradientTo: gift.gradient_to,
       recipients: facets.recipients,
       occasions: facets.occasions,
+      interests: facets.interests,
       tags: giftTagIds.map((tagId) => {
         const tag = tagById.get(tagId)
         return {

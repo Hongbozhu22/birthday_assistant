@@ -6,16 +6,24 @@
  */
 const CATEGORY_GRADIENTS = {
   运动: ['#34d399', '#047857'],
+  运动户外: ['#34d399', '#047857'],
   手办: ['#c084fc', '#7c3aed'],
+  潮玩手办: ['#c084fc', '#7c3aed'],
   书籍: ['#60a5fa', '#1d4ed8'],
+  书籍文具: ['#60a5fa', '#1d4ed8'],
   香水: ['#fbbf24', '#b45309'],
+  美妆香氛: ['#fbbf24', '#b45309'],
   实用小物: ['#fb923c', '#c2410c'],
+  居家日用: ['#a3e635', '#4d7c0f'],
   数码: ['#22d3ee', '#0e7490'],
+  数码电子: ['#22d3ee', '#0e7490'],
   美食: ['#f87171', '#b91c1c'],
+  美食饮品: ['#f87171', '#b91c1c'],
   居家: ['#a3e635', '#4d7c0f'],
   户外: ['#2dd4bf', '#0f766e'],
   音乐: ['#818cf8', '#4338ca'],
-  手工: ['#f472b6', '#be185d']
+  手工: ['#f472b6', '#be185d'],
+  配饰穿搭: ['#f472b6', '#be185d']
 }
 
 export const SEED_GIFTS = [
@@ -728,6 +736,156 @@ export const SEED_GIFTS = [
     priceMin: 800,
     priceMax: 1500,
     tags: ['美食/咖啡', '风格/实用派']
+  },
+  {
+    name: '运动袜毛巾礼盒',
+    emoji: '🧦',
+    category: '运动户外',
+    fitFor: '经常跑步或健身的朋友',
+    reason: '袜子毛巾都是会反复用的消耗品，礼盒装比单送更完整。',
+    priceMin: 80,
+    priceMax: 180,
+    tags: ['运动/跑步', '风格/实用派']
+  },
+  {
+    name: '户外野餐垫',
+    emoji: '🧺',
+    category: '运动户外',
+    fitFor: '喜欢周末去公园和露营的人',
+    reason: '折叠后不占地方，铺开就能坐，适合把见面变成一次小出游。',
+    priceMin: 80,
+    priceMax: 200,
+    tags: ['户外/露营', '风格/仪式感']
+  },
+  {
+    name: '蓝牙音箱',
+    emoji: '🔊',
+    category: '数码电子',
+    fitFor: '喜欢在家放歌、聚会的人',
+    reason: '比手机外放更有氛围，露营、做饭、洗澡都能用。',
+    priceMin: 150,
+    priceMax: 400,
+    tags: ['数码/音频', '风格/仪式感']
+  },
+  {
+    name: '护手霜礼盒',
+    emoji: '🧴',
+    category: '美妆香氛',
+    fitFor: '手容易干、在意日常护理的人',
+    reason: '实用度高，礼盒装适合送同事和朋友，不容易踩雷。',
+    priceMin: 60,
+    priceMax: 150,
+    tags: []
+  },
+  {
+    name: '口红经典色号礼盒',
+    emoji: '💄',
+    category: '美妆香氛',
+    fitFor: '平时会化妆的朋友或恋人',
+    reason: '经典色号比冷门色更稳，礼盒适合作为有仪式感的小礼物。',
+    priceMin: 150,
+    priceMax: 350,
+    tags: []
+  },
+  {
+    name: '乐高创意系列',
+    emoji: '🧱',
+    category: '潮玩手办',
+    fitFor: '喜欢动手拼搭、收藏模型的人',
+    reason: '拼装过程本身就是陪伴，完成后还能摆在桌上。',
+    priceMin: 200,
+    priceMax: 500,
+    tags: ['手办/模型', '风格/收藏向']
+  },
+  {
+    name: '游戏周边小夜灯',
+    emoji: '🌙',
+    category: '潮玩手办',
+    fitFor: '喜欢游戏、桌面需要一点氛围的人',
+    reason: '既是周边也是实用小灯，放在工位或床头都合适。',
+    priceMin: 80,
+    priceMax: 200,
+    tags: ['手办/模型', '风格/陪伴感']
+  },
+  {
+    name: '设计款咖啡杯',
+    emoji: '☕',
+    category: '居家日用',
+    fitFor: '每天喝咖啡、在意杯子颜值的人',
+    reason: '比普通杯子多一点设计感，日常使用频率高。',
+    priceMin: 80,
+    priceMax: 200,
+    tags: ['实用小物/居家小物', '风格/仪式感']
+  },
+  {
+    name: '钢笔礼盒',
+    emoji: '🖋️',
+    category: '书籍文具',
+    fitFor: '经常写字、做手账或刚入职的人',
+    reason: '有仪式感也实用，适合送给喜欢记录生活的朋友。',
+    priceMin: 100,
+    priceMax: 300,
+    tags: ['实用小物/办公', '风格/仪式感']
+  },
+  {
+    name: '喜欢的书 + 手写卡片',
+    emoji: '📖',
+    category: '书籍文具',
+    fitFor: '喜欢阅读、重视心意的人',
+    reason: '书是内容，手写卡片是心意，比直接买一本更特别。',
+    priceMin: 50,
+    priceMax: 120,
+    tags: ['书籍', '风格/仪式感']
+  },
+  {
+    name: '零食大礼包',
+    emoji: '🍿',
+    category: '美食饮品',
+    fitFor: '爱吃零食的朋友、办公室同事',
+    reason: '选择多、分享方便，适合预算不高但想有点热闹的场合。',
+    priceMin: 60,
+    priceMax: 150,
+    tags: ['美食/甜品', '风格/高性价比']
+  },
+  {
+    name: '奶茶/咖啡礼盒',
+    emoji: '🧋',
+    category: '美食饮品',
+    fitFor: '每天离不开奶茶或咖啡的人',
+    reason: '把日常的小习惯变成礼物，实用又有被记住的感觉。',
+    priceMin: 80,
+    priceMax: 200,
+    tags: ['美食/茶饮', '美食/咖啡', '风格/仪式感']
+  },
+  {
+    name: '本地烘焙生日蛋糕券',
+    emoji: '🎂',
+    category: '美食饮品',
+    fitFor: '想送蛋糕但怕买错口味的人',
+    reason: '让对方自己选口味和取货时间，比直接订蛋糕更灵活。',
+    priceMin: 100,
+    priceMax: 300,
+    tags: ['美食/甜品', '风格/仪式感']
+  },
+  {
+    name: '轻奢入门银项链/手链',
+    emoji: '📿',
+    category: '配饰穿搭',
+    fitFor: '喜欢简约首饰的朋友或恋人',
+    reason: '日常能戴，价格比大牌友好，适合作为纪念日小礼物。',
+    priceMin: 150,
+    priceMax: 400,
+    tags: []
+  },
+  {
+    name: '基础款板鞋/运动鞋',
+    emoji: '👟',
+    category: '配饰穿搭',
+    fitFor: '缺一双百搭鞋、经常走路的人',
+    reason: '使用频率高，但尺码和款式偏好明显，最好确认对方需求。',
+    priceMin: 200,
+    priceMax: 500,
+    tags: []
   }
 ].map((gift, index) => {
   const [from, to] = CATEGORY_GRADIENTS[gift.category]

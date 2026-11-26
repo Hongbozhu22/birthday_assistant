@@ -1,7 +1,7 @@
 import { TAG_TREE } from './tags.js'
 import { SEED_GIFTS } from './gifts.js'
 
-export const SEED_VERSION = '1'
+export const SEED_VERSION = '2'
 
 /**
  * 写入标签树与礼物种子数据。
@@ -84,6 +84,69 @@ export function runSeed(db) {
 
   setMeta.run('seed_version', SEED_VERSION)
   setMeta.run('seeded_at', new Date().toISOString())
+}
+
+/**
+ * 给已经存在的数据库补新增礼物，不删除、不重写旧数据。
+ * 新礼物只引用已有标签，这样升级时不需要重建标签树。
+ */
+export function runSeedAdditions(db) {
+  const existingNames = new Set(
+    db.prepare('SELECT name FROM gifts').all().map((row) => row.name)
+  )
+
+  const missing = SEED_GIFTS.filter((gift) => !existingNames.has(gift.name))
+  if (missing.length === 0) return 0
+
+  const tagRows = db.prepare('SELECT id, name, parent_id FROM tags').all()
+  const tagIdsByPath = new Map()
+  for (const tag of tagRows) {
+    if (tag.parent_id == null) {
+      tagIdsByPath.set(tag.name, tag.id)
+    } else {
+      const parent = tagRows.find((row) => row.id === tag.parent_id)
+      if (parent) tagIdsByPath.set(`${parent.name}/${tag.name}`, tag.id)
+    }
+  }
+
+  const insertGift = db.prepare(`
+    INSERT INTO gifts
+      (name, emoji, category, fit_for, reason, price_min, price_max,
+       gradient_from, gradient_to, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `)
+  const insertGiftTag = db.prepare(
+    'INSERT OR IGNORE INTO gift_tags (gift_id, tag_id) VALUES (?, ?)'
+  )
+  const setMeta = db.prepare(
+    'INSERT INTO app_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
+  )
+
+  const added = []
+  for (const gift of missing) {
+    const result = insertGift.run(
+      gift.name,
+      gift.emoji,
+      gift.category,
+      gift.fitFor,
+      gift.reason,
+      gift.priceMin,
+      gift.priceMax,
+      gift.gradientFrom,
+      gift.gradientTo,
+      gift.sortOrder
+    )
+    const giftId = Number(result.lastInsertRowid)
+    added.push(gift.name)
+
+    for (const tagPath of gift.tags) {
+      const tagId = tagIdsByPath.get(tagPath)
+      if (tagId) insertGiftTag.run(giftId, tagId)
+    }
+  }
+
+  setMeta.run('seed_version', SEED_VERSION)
+  return added.length
 }
 
 export const SEED_SUMMARY = {
