@@ -465,7 +465,7 @@ export function listAdminUsers(db) {
          FROM users u
          LEFT JOIN reviews r ON r.user_id = u.id
         GROUP BY u.id
-        ORDER BY u.id ASC`
+        ORDER BY datetime(u.created_at) DESC, u.id DESC`
     )
     .all()
 

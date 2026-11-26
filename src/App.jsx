@@ -98,7 +98,6 @@ function App() {
   const [user, setUser] = useState(null)
   const [authError, setAuthError] = useState('')
   const [accountOpen, setAccountOpen] = useState(false)
-  const [adminOpen, setAdminOpen] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -317,7 +316,6 @@ function App() {
     setOccasionKey(null)
     setToast(null)
     setAccountOpen(false)
-    setAdminOpen(false)
     setSelectedFriendId(null)
   }
 
@@ -552,6 +550,16 @@ function App() {
             >
               仓库
             </button>
+            {user.isAdmin && (
+              <button
+                type="button"
+                className={`topbar-link ${view === 'admin' ? 'is-active' : ''}`}
+                aria-current={view === 'admin' ? 'page' : undefined}
+                onClick={() => showView('admin')}
+              >
+                管理
+              </button>
+            )}
           </nav>
           <button
             className="account-button"
@@ -1107,6 +1115,10 @@ function App() {
           </>
         )}
 
+        {status === 'ready' && view === 'admin' && user?.isAdmin && (
+          <AdminView user={user} onToast={showToast} />
+        )}
+
         {status === 'ready' && view === 'detail' && (
           <>
             {detailGift ? (
@@ -1153,18 +1165,10 @@ function App() {
           onClose={() => setAccountOpen(false)}
           onOpenAdmin={() => {
             setAccountOpen(false)
-            setAdminOpen(true)
+            showView('admin')
           }}
           onLogout={handleLogout}
           onDeleted={clearClientSession}
-          onToast={showToast}
-        />
-      )}
-
-      {adminOpen && user?.isAdmin && (
-        <AdminModal
-          user={user}
-          onClose={() => setAdminOpen(false)}
           onToast={showToast}
         />
       )}
@@ -1347,7 +1351,7 @@ function AccountModal({ user, onClose, onOpenAdmin, onLogout, onDeleted, onToast
               type="button"
               onClick={onOpenAdmin}
             >
-              打开管理面板
+              进入管理页
             </button>
           </section>
         )}
@@ -1415,7 +1419,7 @@ function AccountModal({ user, onClose, onOpenAdmin, onLogout, onDeleted, onToast
   )
 }
 
-function AdminModal({ user, onClose, onToast }) {
+function AdminView({ user, onToast }) {
   const [tab, setTab] = useState('reviews')
   const [reviews, setReviews] = useState([])
   const [users, setUsers] = useState([])
@@ -1423,25 +1427,16 @@ function AdminModal({ user, onClose, onToast }) {
   const [error, setError] = useState('')
   const [muteDays, setMuteDays] = useState({})
 
-  useEffect(() => {
-    function onKeyDown(event) {
-      if (event.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
-
-  async function loadData(nextTab = tab) {
+  async function loadData() {
     setLoading(true)
     setError('')
     try {
-      if (nextTab === 'reviews') {
-        const payload = await fetchJson('/api/admin/reviews')
-        setReviews(payload.reviews ?? [])
-      } else {
-        const payload = await fetchJson('/api/admin/users')
-        setUsers(payload.users ?? [])
-      }
+      const [reviewPayload, userPayload] = await Promise.all([
+        fetchJson('/api/admin/reviews'),
+        fetchJson('/api/admin/users')
+      ])
+      setReviews(reviewPayload.reviews ?? [])
+      setUsers(userPayload.users ?? [])
     } catch (loadError) {
       setError(loadError.message || '管理数据加载失败')
     } finally {
@@ -1450,9 +1445,8 @@ function AdminModal({ user, onClose, onToast }) {
   }
 
   useEffect(() => {
-    loadData(tab)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab])
+    loadData()
+  }, [])
 
   async function handleDeleteReview(review) {
     if (!window.confirm(`删除「${review.giftName}」下的这条评价？`)) return
@@ -1499,7 +1493,7 @@ function AdminModal({ user, onClose, onToast }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ days, reason })
       })
-      await loadData('users')
+      await loadData()
       onToast?.(`用户 ${target.username} 已被禁言`)
     } catch (muteError) {
       onToast?.(muteError.message || '禁言失败')
@@ -1514,126 +1508,150 @@ function AdminModal({ user, onClose, onToast }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
       })
-      await loadData('users')
+      await loadData()
       onToast?.(`用户 ${target.username} 已解除禁言`)
     } catch (unmuteError) {
       onToast?.(unmuteError.message || '解除禁言失败')
     }
   }
 
+  function isRecent(value) {
+    if (!value) return false
+    const date = new Date(`${String(value).replace(' ', 'T')}Z`)
+    return (
+      !Number.isNaN(date.getTime()) &&
+      Date.now() - date.getTime() <= 7 * 24 * 60 * 60 * 1000
+    )
+  }
+
+  const recentReviewCount = reviews.filter((review) =>
+    isRecent(review.createdAt)
+  ).length
+  const recentUserCount = users.filter((item) =>
+    isRecent(item.createdAt)
+  ).length
+
   return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose()
-      }}
-    >
-      <section
-        className="account-modal admin-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label="管理员面板"
-      >
-        <div className="account-modal-head">
-          <div>
-            <p className="section-kicker">ADMIN</p>
-            <h2>管理面板</h2>
-            <p className="account-modal-email">
-              管理员 {user.username}
-              {user.email ? ` · ${user.email}` : ''}
-            </p>
-          </div>
-          <button
-            className="modal-close"
-            type="button"
-            onClick={onClose}
-            aria-label="关闭管理面板"
-          >
-            ×
-          </button>
-        </div>
-
-        <div className="admin-tabs" role="tablist" aria-label="管理分类">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'reviews'}
-            className={tab === 'reviews' ? 'is-active' : ''}
-            onClick={() => setTab('reviews')}
-          >
-            评价审核
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'users'}
-            className={tab === 'users' ? 'is-active' : ''}
-            onClick={() => setTab('users')}
-          >
-            用户管理
-          </button>
-        </div>
-
-        {error && (
-          <p className="form-message error" role="alert">
-            {error}
+    <section className="admin-page">
+      <div className="workbench-head admin-page-head">
+        <div>
+          <p className="section-kicker">ADMIN</p>
+          <h1>管理</h1>
+          <p className="page-summary">
+            管理员 {user.username} · 仅你的账号可以看到这个页面
           </p>
-        )}
+        </div>
+        <span className="page-meta">评论 · 用户 · 禁言</span>
+      </div>
 
-        {loading ? (
-          <p className="admin-loading">加载中…</p>
-        ) : tab === 'reviews' ? (
-          <div className="admin-review-list">
-            {reviews.length === 0 ? (
-              <p className="admin-loading">还没有评价。</p>
-            ) : (
-              reviews.map((review) => (
-                <article className="admin-review-row" key={review.id}>
-                  <div className="admin-review-head">
-                    <div>
-                      <strong>用户 {review.username}</strong>
-                      <span className="admin-review-email">{review.email}</span>
-                    </div>
-                    <span className="admin-review-date">
-                      {formatReviewDate(review.createdAt)}
-                    </span>
+      <div className="admin-stat-grid">
+        <div className="admin-stat">
+          <strong>{recentReviewCount}</strong>
+          <span>最近 7 天新评价</span>
+        </div>
+        <div className="admin-stat">
+          <strong>{recentUserCount}</strong>
+          <span>最近 7 天新用户</span>
+        </div>
+        <div className="admin-stat">
+          <strong>{reviews.length}</strong>
+          <span>全部评价</span>
+        </div>
+        <div className="admin-stat">
+          <strong>{users.length}</strong>
+          <span>全部账号</span>
+        </div>
+      </div>
+
+      <div className="admin-tabs" role="tablist" aria-label="管理分类">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'reviews'}
+          className={tab === 'reviews' ? 'is-active' : ''}
+          onClick={() => setTab('reviews')}
+        >
+          评价审核 {recentReviewCount > 0 ? `· 新增 ${recentReviewCount}` : ''}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'users'}
+          className={tab === 'users' ? 'is-active' : ''}
+          onClick={() => setTab('users')}
+        >
+          用户管理 {recentUserCount > 0 ? `· 新增 ${recentUserCount}` : ''}
+        </button>
+      </div>
+
+      {error && (
+        <p className="form-message error" role="alert">
+          {error}
+        </p>
+      )}
+
+      {loading ? (
+        <p className="admin-loading">加载中…</p>
+      ) : tab === 'reviews' ? (
+        <div className="admin-review-list">
+          {reviews.length === 0 ? (
+            <p className="admin-loading">还没有评价。</p>
+          ) : (
+            reviews.map((review) => (
+              <article className="admin-review-row" key={review.id}>
+                <div className="admin-review-head">
+                  <div>
+                    <strong>用户 {review.username}</strong>
+                    {isRecent(review.createdAt) && (
+                      <span className="admin-new-badge">新</span>
+                    )}
                   </div>
-                  <p className="admin-review-gift">
-                    {review.giftName} · {review.rating} 星
-                  </p>
-                  {review.comment && (
-                    <p className="admin-review-body">{review.comment}</p>
-                  )}
-                  {review.imagePath && (
-                    <a
-                      href={review.imagePath}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="admin-review-image-link"
-                    >
-                      查看图片
-                    </a>
-                  )}
-                  <div className="admin-review-actions">
-                    <button
-                      type="button"
-                      className="review-delete"
-                      onClick={() => handleDeleteReview(review)}
-                    >
-                      删除违规评价
-                    </button>
-                  </div>
-                </article>
-              ))
-            )}
-          </div>
-        ) : (
-          <div className="admin-user-list">
-            {users.map((item) => (
+                  <span className="admin-review-date">
+                    {formatReviewDate(review.createdAt)}
+                  </span>
+                </div>
+                <p className="admin-review-gift">
+                  {review.giftName} · {review.rating} 星
+                </p>
+                {review.comment && (
+                  <p className="admin-review-body">{review.comment}</p>
+                )}
+                {review.imagePath && (
+                  <a
+                    href={review.imagePath}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="admin-review-image-link"
+                  >
+                    查看图片
+                  </a>
+                )}
+                <div className="admin-review-actions">
+                  <button
+                    type="button"
+                    className="review-delete"
+                    onClick={() => handleDeleteReview(review)}
+                  >
+                    删除违规评价
+                  </button>
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+      ) : (
+        <div className="admin-user-list">
+          {users.length === 0 ? (
+            <p className="admin-loading">还没有账号。</p>
+          ) : (
+            users.map((item) => (
               <article className="admin-user-row" key={item.id}>
                 <div className="admin-user-info">
                   <div className="admin-user-name">
                     <strong>用户 {item.username}</strong>
+                    {isRecent(item.createdAt) && (
+                      <span className="admin-new-badge">新</span>
+                    )}
                     {item.isAdmin && (
                       <span className="admin-badge">管理员</span>
                     )}
@@ -1703,11 +1721,11 @@ function AdminModal({ user, onClose, onToast }) {
                   </div>
                 )}
               </article>
-            ))}
-          </div>
-        )}
-      </section>
-    </div>
+            ))
+          )}
+        </div>
+      )}
+    </section>
   )
 }
 
