@@ -5936,6 +5936,16 @@ body::before,
   font-size: 13px;
 }
 
+.review-muted {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .review-empty h3 {
   font-family: var(--sans);
   font-size: 18px;

@@ -557,7 +557,11 @@ function App() {
             className="account-button"
             type="button"
             onClick={() => setAccountOpen(true)}
-            title={user.username ? `${user.username} · ${user.email}` : user.email}
+            title={
+              user.username
+                ? `${user.username}${user.email ? ` · ${user.email}` : ''}`
+                : user.email
+            }
           >
             <span className="account-avatar" aria-hidden="true">
               {(user.username || user.email).slice(-2).toUpperCase()}
@@ -1109,6 +1113,8 @@ function App() {
               <GiftDetail
                 gift={detailGift}
                 isAdmin={Boolean(user?.isAdmin)}
+                isMuted={Boolean(user?.isMuted)}
+                mutedUntil={user?.mutedUntil}
                 onBack={() => showView('search')}
                 onToast={showToast}
               />
@@ -1263,7 +1269,9 @@ function AccountModal({ user, onClose, onOpenAdmin, onLogout, onDeleted, onToast
             <p className="section-kicker">ACCOUNT</p>
             <h2>账号设置</h2>
             <p className="account-modal-email">
-              {user.username ? `用户 ${user.username} · ${user.email}` : user.email}
+              {user.username
+                ? `用户 ${user.username}${user.email ? ` · ${user.email}` : ''}`
+                : user.email}
             </p>
           </div>
           <button
@@ -1333,7 +1341,7 @@ function AccountModal({ user, onClose, onOpenAdmin, onLogout, onDeleted, onToast
         {user.isAdmin && (
           <section className="account-section">
             <h3>管理员</h3>
-            <p>查看全部评价、删除违规评论、重置用户密码和封禁账号。</p>
+            <p>查看全部评价、删除违规评论、重置用户密码和禁言账号。</p>
             <button
               className="button button-primary account-submit"
               type="button"
@@ -1413,7 +1421,7 @@ function AdminModal({ user, onClose, onToast }) {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [banDays, setBanDays] = useState({})
+  const [muteDays, setMuteDays] = useState({})
 
   useEffect(() => {
     function onKeyDown(event) {
@@ -1478,38 +1486,38 @@ function AdminModal({ user, onClose, onToast }) {
     }
   }
 
-  async function handleBan(target) {
-    const days = Number(banDays[target.id] ?? 7)
+  async function handleMute(target) {
+    const days = Number(muteDays[target.id] ?? 7)
     const reason = window.prompt(
-      `封禁用户 ${target.username} 的原因（可留空）`,
+      `禁言用户 ${target.username} 的原因（可留空）`,
       ''
     )
     if (reason === null) return
     try {
-      await fetchJson(`/api/admin/users/${target.id}/ban`, {
+      await fetchJson(`/api/admin/users/${target.id}/mute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ days, reason })
       })
       await loadData('users')
-      onToast?.(`用户 ${target.username} 已封禁`)
-    } catch (banError) {
-      onToast?.(banError.message || '封禁失败')
+      onToast?.(`用户 ${target.username} 已被禁言`)
+    } catch (muteError) {
+      onToast?.(muteError.message || '禁言失败')
     }
   }
 
-  async function handleUnban(target) {
-    if (!window.confirm(`解除用户 ${target.username} 的封禁？`)) return
+  async function handleUnmute(target) {
+    if (!window.confirm(`解除用户 ${target.username} 的禁言？`)) return
     try {
-      await fetchJson(`/api/admin/users/${target.id}/unban`, {
+      await fetchJson(`/api/admin/users/${target.id}/unmute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
       })
       await loadData('users')
-      onToast?.(`用户 ${target.username} 已解封`)
-    } catch (unbanError) {
-      onToast?.(unbanError.message || '解封失败')
+      onToast?.(`用户 ${target.username} 已解除禁言`)
+    } catch (unmuteError) {
+      onToast?.(unmuteError.message || '解除禁言失败')
     }
   }
 
@@ -1531,7 +1539,8 @@ function AdminModal({ user, onClose, onToast }) {
             <p className="section-kicker">ADMIN</p>
             <h2>管理面板</h2>
             <p className="account-modal-email">
-              管理员 {user.username} · {user.email}
+              管理员 {user.username}
+              {user.email ? ` · ${user.email}` : ''}
             </p>
           </div>
           <button
@@ -1628,19 +1637,20 @@ function AdminModal({ user, onClose, onToast }) {
                     {item.isAdmin && (
                       <span className="admin-badge">管理员</span>
                     )}
-                    {item.isBanned && (
-                      <span className="admin-badge is-banned">已封禁</span>
+                    {item.isMuted && (
+                      <span className="admin-badge is-banned">已禁言</span>
                     )}
                   </div>
                   <p>
-                    {item.email} · 评价 {item.reviewCount} 条
+                    {item.email ? `${item.email} · ` : ''}评价{' '}
+                    {item.reviewCount} 条
                   </p>
-                  {item.isBanned && (
+                  {item.isMuted && (
                     <p className="admin-ban-note">
-                      {String(item.bannedUntil ?? '').startsWith('9999')
-                        ? '永久封禁'
-                        : `封禁至 ${formatReviewDate(item.bannedUntil)}`}
-                      {item.banReason ? ` · ${item.banReason}` : ''}
+                      {String(item.mutedUntil ?? '').startsWith('9999')
+                        ? '永久禁言'
+                        : `禁言至 ${formatReviewDate(item.mutedUntil)}`}
+                      {item.muteReason ? ` · ${item.muteReason}` : ''}
                     </p>
                   )}
                 </div>
@@ -1653,26 +1663,26 @@ function AdminModal({ user, onClose, onToast }) {
                     >
                       重置密码
                     </button>
-                    {item.isBanned ? (
+                    {item.isMuted ? (
                       <button
                         type="button"
                         className="admin-small-button is-accent"
-                        onClick={() => handleUnban(item)}
+                        onClick={() => handleUnmute(item)}
                       >
-                        解封
+                        解除禁言
                       </button>
                     ) : (
                       <>
                         <select
                           className="admin-ban-select"
-                          value={banDays[item.id] ?? 7}
+                          value={muteDays[item.id] ?? 7}
                           onChange={(event) =>
-                            setBanDays((previous) => ({
+                            setMuteDays((previous) => ({
                               ...previous,
                               [item.id]: event.target.value
                             }))
                           }
-                          aria-label={`封禁 ${item.username} 的时长`}
+                          aria-label={`禁言 ${item.username} 的时长`}
                         >
                           <option value={1}>1 天</option>
                           <option value={3}>3 天</option>
@@ -1684,9 +1694,9 @@ function AdminModal({ user, onClose, onToast }) {
                         <button
                           type="button"
                           className="admin-small-button is-danger"
-                          onClick={() => handleBan(item)}
+                          onClick={() => handleMute(item)}
                         >
-                          封禁
+                          禁言
                         </button>
                       </>
                     )}
@@ -1720,9 +1730,10 @@ function AuthLoading() {
 
 function AuthScreen({ onAuthed, initialError }) {
   const [mode, setMode] = useState('login')
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -1730,6 +1741,7 @@ function AuthScreen({ onAuthed, initialError }) {
     setMode(nextMode)
     setPassword('')
     setConfirmPassword('')
+    setInviteCode('')
     setError('')
   }
 
@@ -1747,7 +1759,11 @@ function AuthScreen({ onAuthed, initialError }) {
       const payload = await fetchJson(`/api/auth/${mode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify(
+          mode === 'login'
+            ? { username, password }
+            : { password, inviteCode }
+        )
       })
       onAuthed(payload.user)
     } catch (authSubmitError) {
@@ -1787,7 +1803,7 @@ function AuthScreen({ onAuthed, initialError }) {
             <em>留在自己的账号里</em>。
           </h1>
           <p className="auth-lead">
-            每个人用自己的邮箱登录，好友生日和礼物仓库互相隔离；评价全站共享并匿名展示。
+            每个人用自己的用户名登录，好友生日和礼物仓库互相隔离；评价全站共享并匿名展示。
             数据保存在部署的服务器上。
           </p>
 
@@ -1799,7 +1815,7 @@ function AuthScreen({ onAuthed, initialError }) {
           </ul>
 
           <p className="auth-privacy">
-            登录仅需要邮箱和密码，不发验证邮件；用户名自动分配，忘记密码请联系管理员重置。
+            登录只需要用户名和密码；注册需要固定邀请码。忘记密码请联系管理员重置。
           </p>
         </section>
 
@@ -1828,22 +1844,27 @@ function AuthScreen({ onAuthed, initialError }) {
           <h2>{mode === 'login' ? '欢迎回来' : '创建账号'}</h2>
           <p className="auth-card-hint">
             {mode === 'login'
-              ? '用邮箱和密码进入你的生日与礼物记录。'
-              : '请填写真实可用的邮箱；邮箱是登录名，不会发送验证邮件。'}
+              ? '用 4 位用户名和密码进入你的生日与礼物记录。'
+              : '注册需要固定邀请码，用户名由系统自动分配。'}
           </p>
 
           <form className="auth-form" onSubmit={handleSubmit}>
-            <label className="auth-field">
-              <span>邮箱</span>
-              <input
-                type="email"
-                value={email}
-                required
-                autoComplete="username"
-                placeholder="name@qq.com"
-                onChange={(event) => setEmail(event.target.value)}
-              />
-            </label>
+            {mode === 'login' && (
+              <label className="auth-field">
+                <span>用户名</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={username}
+                  required
+                  pattern="[0-9]{1,4}"
+                  maxLength={4}
+                  autoComplete="username"
+                  placeholder="例如 0011"
+                  onChange={(event) => setUsername(event.target.value)}
+                />
+              </label>
+            )}
 
             <label className="auth-field">
               <span>密码</span>
@@ -1877,6 +1898,20 @@ function AuthScreen({ onAuthed, initialError }) {
               </label>
             )}
 
+            {mode === 'register' && (
+              <label className="auth-field">
+                <span>邀请码</span>
+                <input
+                  type="text"
+                  value={inviteCode}
+                  required
+                  autoComplete="off"
+                  placeholder="向管理员获取固定邀请码"
+                  onChange={(event) => setInviteCode(event.target.value)}
+                />
+              </label>
+            )}
+
             {(error || initialError) && (
               <p className="form-message error auth-error" role="alert">
                 {error || initialError}
@@ -1900,8 +1935,8 @@ function AuthScreen({ onAuthed, initialError }) {
 
           <p className="auth-card-note">
             {mode === 'register'
-              ? '注册后自动分配 4 位用户名（0001-9999）；忘记密码请联系管理员重置。'
-              : '还没有账号？切换到“注册”，用邮箱创建一个。'}
+              ? '注册成功后自动分配 4 位用户名；忘记密码请联系管理员重置。'
+              : '还没有账号？切换到“注册”，使用邀请码创建。'}
           </p>
         </section>
       </div>
@@ -2086,7 +2121,7 @@ function formatReviewDate(value) {
   })
 }
 
-function GiftDetail({ gift, isAdmin, onBack, onToast }) {
+function GiftDetail({ gift, isAdmin, isMuted, mutedUntil, onBack, onToast }) {
   const [reviewData, setReviewData] = useState(null)
   const [reviewStatus, setReviewStatus] = useState('loading')
   const [reviewError, setReviewError] = useState('')
@@ -2356,7 +2391,14 @@ function GiftDetail({ gift, isAdmin, onBack, onToast }) {
             评价会匿名展示给所有登录用户，并计入全站评分；管理员会删除违规内容。
           </p>
 
-          <form className="review-form" onSubmit={handleSubmit}>
+          {isMuted ? (
+            <p className="review-muted">
+              你已被禁言
+              {mutedUntil ? `至 ${formatReviewDate(mutedUntil)}` : ''}
+              ，期间可以登录和浏览，但暂时不能发表评价。
+            </p>
+          ) : (
+            <form className="review-form" onSubmit={handleSubmit}>
             <div
               className="star-input"
               onMouseLeave={() => setHoverRating(0)}
@@ -2439,6 +2481,7 @@ function GiftDetail({ gift, isAdmin, onBack, onToast }) {
               {submitting ? '提交中…' : '提交评价'}
             </button>
           </form>
+          )}
         </aside>
       </div>
     </section>

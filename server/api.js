@@ -26,9 +26,9 @@ import {
   recordLoginFailure,
   registerUser,
   setSessionCookie,
-  adminBanUser,
+  adminMuteUser,
   adminResetPassword,
-  adminUnbanUser
+  adminUnmuteUser
 } from './auth.js'
 
 const IMAGE_MIME_TYPES = {
@@ -299,7 +299,7 @@ export function createApiMiddleware() {
           methodNotAllowed(res, ['GET'])
           return
         }
-        sendJson(res, 200, { inviteRequired: false })
+        sendJson(res, 200, { inviteRequired: true })
         return
       }
 
@@ -309,7 +309,15 @@ export function createApiMiddleware() {
           return
         }
         const body = await readJsonBody(req)
-        const user = await registerUser(db, body?.email, body?.password)
+        if (!process.env.INVITE_CODE) {
+          sendJson(res, 503, { error: '注册暂未开放，请联系管理员' })
+          return
+        }
+        if (String(body?.inviteCode ?? '') !== process.env.INVITE_CODE) {
+          sendJson(res, 403, { error: '邀请码不正确' })
+          return
+        }
+        const user = await registerUser(db, body?.password)
         const session = createSession(db, user.id)
         setSessionCookie(req, res, session.token, session.expiresAt)
         sendJson(res, 201, { user })
@@ -323,15 +331,15 @@ export function createApiMiddleware() {
         }
         const body = await readJsonBody(req)
         const ip = req.socket.remoteAddress || 'unknown'
-        assertLoginAllowed(ip, body?.email)
+        assertLoginAllowed(ip, body?.username)
         try {
-          const user = await loginUser(db, body?.email, body?.password)
-          clearLoginFailures(ip, body?.email)
+          const user = await loginUser(db, body?.username, body?.password)
+          clearLoginFailures(ip, body?.username)
           const session = createSession(db, user.id)
           setSessionCookie(req, res, session.token, session.expiresAt)
           sendJson(res, 200, { user })
         } catch (error) {
-          if (error.statusCode === 401) recordLoginFailure(ip, body?.email)
+          if (error.statusCode === 401) recordLoginFailure(ip, body?.username)
           throw error
         }
         return
@@ -453,18 +461,18 @@ export function createApiMiddleware() {
         return
       }
 
-      const adminBanMatch = url.pathname.match(
-        /^\/api\/admin\/users\/(\d+)\/ban$/
+      const adminMuteMatch = url.pathname.match(
+        /^\/api\/admin\/users\/(\d+)\/mute$/
       )
-      if (adminBanMatch) {
+      if (adminMuteMatch) {
         if (req.method !== 'POST') {
           methodNotAllowed(res, ['POST'])
           return
         }
         const body = await readJsonBody(req)
-        const result = adminBanUser(
+        const result = adminMuteUser(
           db,
-          Number(adminBanMatch[1]),
+          Number(adminMuteMatch[1]),
           body,
           currentUser
         )
@@ -472,15 +480,15 @@ export function createApiMiddleware() {
         return
       }
 
-      const adminUnbanMatch = url.pathname.match(
-        /^\/api\/admin\/users\/(\d+)\/unban$/
+      const adminUnmuteMatch = url.pathname.match(
+        /^\/api\/admin\/users\/(\d+)\/unmute$/
       )
-      if (adminUnbanMatch) {
+      if (adminUnmuteMatch) {
         if (req.method !== 'POST') {
           methodNotAllowed(res, ['POST'])
           return
         }
-        adminUnbanUser(db, Number(adminUnbanMatch[1]), currentUser)
+        adminUnmuteUser(db, Number(adminUnmuteMatch[1]), currentUser)
         sendJson(res, 200, { ok: true })
         return
       }
@@ -536,6 +544,12 @@ export function createApiMiddleware() {
         }
 
         if (req.method === 'POST') {
+          if (currentUser.isMuted) {
+            sendJson(res, 403, {
+              error: '你已被禁言，暂时不能发表评价'
+            })
+            return
+          }
           const body = await readJsonBody(req, 8 * 1024 * 1024)
           const result = createReview(db, giftId, body, currentUser.id)
           sendJson(res, 201, result)

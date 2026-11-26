@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS users (
   is_admin      INTEGER NOT NULL DEFAULT 0,
   banned_until  TEXT,
   ban_reason    TEXT,
+  muted_until   TEXT,
+  mute_reason   TEXT,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );

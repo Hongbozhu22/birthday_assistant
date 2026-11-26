@@ -45,6 +45,14 @@ export function getDb() {
     db.exec('ALTER TABLE users ADD COLUMN ban_reason TEXT')
     console.log('[db] 已补充 users.ban_reason 字段')
   }
+  if (!userColumns.some((column) => column.name === 'muted_until')) {
+    db.exec('ALTER TABLE users ADD COLUMN muted_until TEXT')
+    console.log('[db] 已补充 users.muted_until 字段')
+  }
+  if (!userColumns.some((column) => column.name === 'mute_reason')) {
+    db.exec('ALTER TABLE users ADD COLUMN mute_reason TEXT')
+    console.log('[db] 已补充 users.mute_reason 字段')
+  }
 
   const allUsers = db
     .prepare('SELECT id, username FROM users ORDER BY id ASC')
