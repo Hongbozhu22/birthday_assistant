@@ -436,7 +436,7 @@ export function createApiMiddleware() {
             createdAt: row.created_at,
             userId: row.user_id,
             username: row.username,
-            email: row.email
+            email: null
           }))
         })
         return

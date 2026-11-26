@@ -125,13 +125,9 @@ async function verifyPassword(password, stored) {
 }
 
 function mapUser(row) {
-  const email =
-    row.email && !String(row.email).endsWith('@local.invalid')
-      ? row.email
-      : null
   return {
     id: row.id,
-    email,
+    email: null,
     username: row.username,
     isAdmin: Boolean(row.is_admin),
     isMuted: isMuteActive(row.muted_until),
@@ -476,10 +472,7 @@ export function listAdminUsers(db) {
   return rows.map((row) => ({
     id: row.id,
     username: row.username,
-    email:
-      row.email && !String(row.email).endsWith('@local.invalid')
-        ? row.email
-        : null,
+    email: null,
     isAdmin: Boolean(row.is_admin),
     isMuted: isMuteActive(row.muted_until),
     mutedUntil: row.muted_until ?? null,
