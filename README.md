@@ -9,17 +9,20 @@
 ## 账号与登录
 
 - 邮箱 + 密码注册，注册成功后自动登录
-- 注册可以配置邀请码：设置环境变量 `INVITE_CODE` 后，注册必须填写正确邀请码
+- 注册后自动分配 4 位用户名（0001-9999），一个邮箱只能绑定一个账号
 - 密码使用 Node.js `scrypt` 加盐哈希保存，不存明文
 - 登录态使用 `HttpOnly` + `SameSite=Lax` 的会话 Cookie，有效期 30 天
 - 每个账号的好友、仓库互相隔离；跨账号请求返回 404
 - 评价与评分全站共享，评论匿名展示，图片对所有登录用户可见
 - 支持在账号设置里修改密码、退出登录、永久注销账号
 - 注销账号会删除该账号的好友、仓库、评价、会话和上传图片
+- 最早的账号自动成为管理员；管理员可以查看全部评价、删除违规评价、重置用户密码、封禁/解封账号
+- 被封禁的账号无法登录，已有会话立即失效；解封时间到期后可重新登录
+- 忘记密码没有自助找回，需要联系管理员重置
 - 单用户版本的旧数据，会在**第一个账号注册时**自动归入该账号
 - 登录尝试有频率限制；生产环境必须启用 HTTPS，并设置 `COOKIE_SECURE=1`
 
-目前**没有**做邮箱验证、找回密码、第三方登录和昵称/头像。邮箱实际上只作为登录名使用，不会发送验证邮件。
+目前**没有**做邮箱验证、找回密码、第三方登录和自定义昵称/头像。邮箱只作为登录名使用，不会发送验证邮件。
 
 ## 功能
 
@@ -136,8 +139,8 @@ npm run db:reset
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/auth/config` | 公开配置（是否开启邀请码） |
-| POST | `/api/auth/register` | 注册：`{ email, password, inviteCode? }`，成功后自动登录 |
+| GET | `/api/auth/config` | 公开配置（邀请码已停用） |
+| POST | `/api/auth/register` | 注册：`{ email, password }`，成功后自动登录并分配用户名 |
 | POST | `/api/auth/login` | 登录：`{ email, password }` |
 | POST | `/api/auth/logout` | 退出并清除会话 |
 | GET | `/api/auth/me` | 当前登录账号 |
@@ -147,6 +150,11 @@ npm run db:reset
 | GET | `/api/gifts/:id/reviews` | 全站评价列表、贝叶斯得分与星级分布 |
 | POST | `/api/gifts/:id/reviews` | 提交评价：`{ rating, comment, image? }` |
 | DELETE | `/api/reviews/:id` | 管理员删除违规评价 |
+| GET | `/api/admin/reviews` | 管理员查看全部评价 |
+| GET | `/api/admin/users` | 管理员查看用户列表 |
+| POST | `/api/admin/users/:id/reset-password` | 管理员重置用户密码 |
+| POST | `/api/admin/users/:id/ban` | 管理员封禁用户：`{ days, reason? }` |
+| POST | `/api/admin/users/:id/unban` | 管理员解封用户 |
 | GET | `/api/friends` | 当前账号的好友生日列表 |
 | POST | `/api/friends` | 添加好友：`{ name, month, day, gender?, year? }` |
 | PATCH | `/api/friends/:id` | 更新好友性别 |
@@ -185,9 +193,8 @@ npm run db:reset
 
 当前版本刻意没有做以下功能：
 
-- 邮箱验证、找回密码
-- 昵称 / 头像与评价管理（当前评价匿名展示）
-- 邀请码管理后台（当前通过 `INVITE_CODE` 环境变量配置）
+- 邮箱验证、自助找回密码
+- 自定义昵称 / 头像与评价管理（当前评价匿名展示）
 - 账号数据导出
 - 视频评论、表情包 / 贴纸
 - 评论回复与点赞

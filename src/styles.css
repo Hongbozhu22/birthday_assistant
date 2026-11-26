@@ -5656,6 +5656,200 @@ body::before,
   color: var(--ink);
 }
 
+/* 管理员面板 */
+.admin-modal {
+  width: min(820px, calc(100% - 32px));
+  max-width: 820px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.admin-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 14px 0 8px;
+  padding: 3px;
+  border-radius: var(--ui-radius);
+  background: #f2efea;
+}
+
+.admin-tabs button {
+  flex: 1;
+  height: 32px;
+  border: 0;
+  border-radius: var(--ui-radius);
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.admin-tabs button.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.admin-loading {
+  padding: 30px 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.admin-review-row,
+.admin-user-row {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-review-head,
+.admin-user-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-review-head strong,
+.admin-user-name strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.admin-review-email {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.admin-review-date {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.admin-review-gift {
+  margin: 6px 0 0;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.admin-review-body {
+  margin: 5px 0 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.admin-review-image-link {
+  display: inline-block;
+  margin-top: 5px;
+  color: var(--accent);
+  font-size: 11.5px;
+}
+
+.admin-review-actions {
+  margin-top: 5px;
+}
+
+.admin-user-info {
+  min-width: 0;
+}
+
+.admin-user-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.admin-user-info p {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.admin-user-info .admin-ban-note {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.admin-badge {
+  padding: 1px 5px;
+  border-radius: var(--ui-radius);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10.5px;
+}
+
+.admin-badge.is-banned {
+  background: #f2efea;
+  color: var(--ink-soft);
+}
+
+.admin-user-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.admin-small-button,
+.admin-ban-select {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--ui-radius);
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.admin-small-button {
+  cursor: pointer;
+}
+
+.admin-small-button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.admin-small-button.is-accent {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.admin-small-button.is-danger {
+  color: var(--ink);
+}
+
+.admin-ban-select {
+  background: #fffdfb;
+}
+
+@media (max-width: 700px) {
+  .admin-modal {
+    width: calc(100% - 24px);
+    max-height: calc(100vh - 24px);
+  }
+
+  .admin-user-row,
+  .admin-review-head {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .admin-user-actions {
+    justify-content: flex-start;
+  }
+}
+
 .review-comment {
   margin-top: 7px;
   color: var(--ink-soft);

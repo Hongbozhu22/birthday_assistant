@@ -87,9 +87,46 @@ function mapUser(row) {
   return {
     id: row.id,
     email: row.email,
+    username: row.username,
     isAdmin: Boolean(row.is_admin),
+    isBanned: isBanActive(row.banned_until),
+    bannedUntil: row.banned_until ?? null,
     createdAt: row.created_at
   }
+}
+
+function isBanActive(value) {
+  if (!value) return false
+  const date = new Date(`${String(value).replace(' ', 'T')}Z`)
+  return !Number.isNaN(date.getTime()) && date.getTime() > Date.now()
+}
+
+function formatBanUntil(value) {
+  if (!value) return ''
+  const date = new Date(`${String(value).replace(' ', 'T')}Z`)
+  if (Number.isNaN(date.getTime())) return String(value)
+  return date.toLocaleString('zh-CN', { hour12: false })
+}
+
+function sqliteDateAfterDays(days) {
+  if (days === 0) return '9999-12-31 23:59:59'
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 19)
+    .replace('T', ' ')
+}
+
+function nextUsername(db) {
+  const rows = db.prepare('SELECT username FROM users').all()
+  let max = 0
+  for (const row of rows) {
+    const number = Number.parseInt(row.username, 10)
+    if (Number.isInteger(number) && number > max) max = number
+  }
+  if (max >= 9999) {
+    throw httpError(409, '用户数量已达到 9999 上限')
+  }
+  return String(max + 1).padStart(4, '0')
 }
 
 function adoptLegacyData(db, userId) {
@@ -108,12 +145,15 @@ export async function registerUser(db, emailValue, passwordValue) {
     db.prepare('SELECT COUNT(*) AS count FROM users').get().count
   )
   const passwordHash = await hashPassword(password)
+  const username = nextUsername(db)
 
   db.exec('BEGIN')
   try {
     const result = db
-      .prepare('INSERT INTO users (email, password_hash, is_admin) VALUES (?, ?, ?)')
-      .run(email, passwordHash, userCount === 0 ? 1 : 0)
+      .prepare(
+        'INSERT INTO users (email, username, password_hash, is_admin) VALUES (?, ?, ?, ?)'
+      )
+      .run(email, username, passwordHash, userCount === 0 ? 1 : 0)
     const userId = Number(result.lastInsertRowid)
     if (userCount === 0) {
       // 单用户版本的旧数据归入第一个注册账号
@@ -122,7 +162,11 @@ export async function registerUser(db, emailValue, passwordValue) {
     db.exec('COMMIT')
 
     return mapUser(
-      db.prepare('SELECT id, email, is_admin, created_at FROM users WHERE id = ?').get(userId)
+      db
+        .prepare(
+          'SELECT id, email, username, is_admin, banned_until, created_at FROM users WHERE id = ?'
+        )
+        .get(userId)
     )
   } catch (error) {
     db.exec('ROLLBACK')
@@ -142,6 +186,16 @@ export async function loginUser(db, emailValue, passwordValue) {
 
   const valid = await verifyPassword(password, row.password_hash)
   if (!valid) throw httpError(401, '邮箱或密码不正确')
+
+  if (isBanActive(row.banned_until)) {
+    const until = formatBanUntil(row.banned_until)
+    throw httpError(
+      403,
+      until.startsWith('9999')
+        ? '账号已被永久封禁，请联系管理员'
+        : `账号已被封禁，解封时间：${until}`
+    )
+  }
 
   return mapUser(row)
 }
@@ -174,6 +228,9 @@ export async function changePassword(
 export async function deleteAccount(db, userId, passwordValue) {
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(userId)
   if (!row) throw httpError(404, '账号不存在')
+  if (row.is_admin) {
+    throw httpError(400, '管理员账号不能自行注销，请先由服务器管理员处理')
+  }
 
   const password = String(passwordValue ?? '')
   if (!password) throw httpError(400, '请输入密码确认删除')
@@ -264,7 +321,7 @@ export function getSessionUser(db, req) {
 
   const row = db
     .prepare(
-      `SELECT u.id, u.email, u.is_admin, u.created_at
+      `SELECT u.id, u.email, u.username, u.is_admin, u.banned_until, u.created_at
          FROM sessions s
          JOIN users u ON u.id = s.user_id
         WHERE s.token_hash = ?
@@ -273,7 +330,8 @@ export function getSessionUser(db, req) {
     )
     .get(hashSessionToken(token))
 
-  return row ? mapUser(row) : null
+  if (!row || isBanActive(row.banned_until)) return null
+  return mapUser(row)
 }
 
 export function destroySession(db, req) {
@@ -350,4 +408,90 @@ export function recordLoginFailure(ip, email) {
 
 export function clearLoginFailures(ip, email) {
   loginAttempts.delete(`${ip}|${normalizeEmail(email)}`)
+}
+
+export function listAdminUsers(db) {
+  const rows = db
+    .prepare(
+      `SELECT u.id, u.username, u.email, u.is_admin, u.banned_until,
+              u.ban_reason, u.created_at,
+              COUNT(r.id) AS review_count
+         FROM users u
+         LEFT JOIN reviews r ON r.user_id = u.id
+        GROUP BY u.id
+        ORDER BY u.id ASC`
+    )
+    .all()
+
+  return rows.map((row) => ({
+    id: row.id,
+    username: row.username,
+    email: row.email,
+    isAdmin: Boolean(row.is_admin),
+    isBanned: isBanActive(row.banned_until),
+    bannedUntil: row.banned_until ?? null,
+    banReason: row.ban_reason ?? null,
+    reviewCount: Number(row.review_count),
+    createdAt: row.created_at
+  }))
+}
+
+export async function adminResetPassword(
+  db,
+  targetUserId,
+  newPassword,
+  actor
+) {
+  if (!actor?.isAdmin) throw httpError(403, '只有管理员可以重置密码')
+  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(targetUserId)
+  if (!user) throw httpError(404, '账号不存在')
+
+  const password = validatePassword(newPassword)
+  const passwordHash = await hashPassword(password)
+  db.prepare(
+    `UPDATE users SET password_hash = ?, updated_at = datetime('now')
+      WHERE id = ?`
+  ).run(passwordHash, targetUserId)
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetUserId)
+}
+
+export function adminBanUser(db, targetUserId, options, actor) {
+  if (!actor?.isAdmin) throw httpError(403, '只有管理员可以封禁账号')
+  const user = db
+    .prepare('SELECT id, is_admin FROM users WHERE id = ?')
+    .get(targetUserId)
+  if (!user) throw httpError(404, '账号不存在')
+  if (user.is_admin) throw httpError(400, '不能封禁管理员账号')
+
+  const days = Number(options?.days)
+  if (![0, 1, 3, 7, 30, 90].includes(days)) {
+    throw httpError(400, '封禁时长不正确')
+  }
+  const reason = String(options?.reason ?? '').trim().slice(0, 200)
+  const until = sqliteDateAfterDays(days)
+
+  db.prepare(
+    `UPDATE users
+        SET banned_until = ?, ban_reason = ?, updated_at = datetime('now')
+      WHERE id = ?`
+  ).run(until, reason || null, targetUserId)
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetUserId)
+
+  return {
+    bannedUntil: until,
+    days,
+    reason: reason || null
+  }
+}
+
+export function adminUnbanUser(db, targetUserId, actor) {
+  if (!actor?.isAdmin) throw httpError(403, '只有管理员可以解封账号')
+  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(targetUserId)
+  if (!user) throw httpError(404, '账号不存在')
+
+  db.prepare(
+    `UPDATE users
+        SET banned_until = NULL, ban_reason = NULL, updated_at = datetime('now')
+      WHERE id = ?`
+  ).run(targetUserId)
 }

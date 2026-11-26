@@ -33,6 +33,48 @@ export function getDb() {
     db.exec('ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0')
     console.log('[db] 已补充 users.is_admin 字段')
   }
+  if (!userColumns.some((column) => column.name === 'username')) {
+    db.exec('ALTER TABLE users ADD COLUMN username TEXT')
+    console.log('[db] 已补充 users.username 字段')
+  }
+  if (!userColumns.some((column) => column.name === 'banned_until')) {
+    db.exec('ALTER TABLE users ADD COLUMN banned_until TEXT')
+    console.log('[db] 已补充 users.banned_until 字段')
+  }
+  if (!userColumns.some((column) => column.name === 'ban_reason')) {
+    db.exec('ALTER TABLE users ADD COLUMN ban_reason TEXT')
+    console.log('[db] 已补充 users.ban_reason 字段')
+  }
+
+  const allUsers = db
+    .prepare('SELECT id, username FROM users ORDER BY id ASC')
+    .all()
+  const usedUsernames = new Set(
+    allUsers.map((user) => user.username).filter(Boolean)
+  )
+  let nextNumber = 1
+  for (const user of allUsers) {
+    if (user.username) continue
+    while (
+      nextNumber <= 9999 &&
+      usedUsernames.has(String(nextNumber).padStart(4, '0'))
+    ) {
+      nextNumber += 1
+    }
+    if (nextNumber > 9999) {
+      throw new Error('用户数量已超过 9999，无法分配默认用户名')
+    }
+    const username = String(nextNumber).padStart(4, '0')
+    db.prepare('UPDATE users SET username = ? WHERE id = ?').run(
+      username,
+      user.id
+    )
+    usedUsernames.add(username)
+    nextNumber += 1
+  }
+  db.exec(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)'
+  )
 
   const admin = db
     .prepare('SELECT id FROM users WHERE is_admin = 1 ORDER BY id LIMIT 1')

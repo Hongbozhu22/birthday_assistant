@@ -2,8 +2,11 @@ export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   email         TEXT NOT NULL UNIQUE,
+  username      TEXT UNIQUE,
   password_hash TEXT NOT NULL,
   is_admin      INTEGER NOT NULL DEFAULT 0,
+  banned_until  TEXT,
+  ban_reason    TEXT,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );

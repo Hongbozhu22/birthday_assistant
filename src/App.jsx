@@ -98,6 +98,7 @@ function App() {
   const [user, setUser] = useState(null)
   const [authError, setAuthError] = useState('')
   const [accountOpen, setAccountOpen] = useState(false)
+  const [adminOpen, setAdminOpen] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -316,6 +317,7 @@ function App() {
     setOccasionKey(null)
     setToast(null)
     setAccountOpen(false)
+    setAdminOpen(false)
     setSelectedFriendId(null)
   }
 
@@ -555,12 +557,12 @@ function App() {
             className="account-button"
             type="button"
             onClick={() => setAccountOpen(true)}
-            title={user.email}
+            title={user.username ? `${user.username} · ${user.email}` : user.email}
           >
             <span className="account-avatar" aria-hidden="true">
-              {user.email.slice(0, 1).toUpperCase()}
+              {(user.username || user.email).slice(-2).toUpperCase()}
             </span>
-            <span className="account-email">{user.email}</span>
+            <span className="account-email">{user.username || user.email}</span>
           </button>
         </div>
       </header>
@@ -1143,8 +1145,20 @@ function App() {
         <AccountModal
           user={user}
           onClose={() => setAccountOpen(false)}
+          onOpenAdmin={() => {
+            setAccountOpen(false)
+            setAdminOpen(true)
+          }}
           onLogout={handleLogout}
           onDeleted={clearClientSession}
+          onToast={showToast}
+        />
+      )}
+
+      {adminOpen && user?.isAdmin && (
+        <AdminModal
+          user={user}
+          onClose={() => setAdminOpen(false)}
           onToast={showToast}
         />
       )}
@@ -1158,7 +1172,7 @@ function App() {
   )
 }
 
-function AccountModal({ user, onClose, onLogout, onDeleted, onToast }) {
+function AccountModal({ user, onClose, onOpenAdmin, onLogout, onDeleted, onToast }) {
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -1248,7 +1262,9 @@ function AccountModal({ user, onClose, onLogout, onDeleted, onToast }) {
           <div>
             <p className="section-kicker">ACCOUNT</p>
             <h2>账号设置</h2>
-            <p className="account-modal-email">{user.email}</p>
+            <p className="account-modal-email">
+              {user.username ? `用户 ${user.username} · ${user.email}` : user.email}
+            </p>
           </div>
           <button
             className="modal-close"
@@ -1314,6 +1330,20 @@ function AccountModal({ user, onClose, onLogout, onDeleted, onToast }) {
           </form>
         </section>
 
+        {user.isAdmin && (
+          <section className="account-section">
+            <h3>管理员</h3>
+            <p>查看全部评价、删除违规评论、重置用户密码和封禁账号。</p>
+            <button
+              className="button button-primary account-submit"
+              type="button"
+              onClick={onOpenAdmin}
+            >
+              打开管理面板
+            </button>
+          </section>
+        )}
+
         <section className="account-section account-danger">
           <h3>注销账号</h3>
           <p>
@@ -1368,6 +1398,300 @@ function AccountModal({ user, onClose, onLogout, onDeleted, onToast }) {
   )
 }
 
+function AdminModal({ user, onClose, onToast }) {
+  const [tab, setTab] = useState('reviews')
+  const [reviews, setReviews] = useState([])
+  const [users, setUsers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [banDays, setBanDays] = useState({})
+
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
+  async function loadData(nextTab = tab) {
+    setLoading(true)
+    setError('')
+    try {
+      if (nextTab === 'reviews') {
+        const payload = await fetchJson('/api/admin/reviews')
+        setReviews(payload.reviews ?? [])
+      } else {
+        const payload = await fetchJson('/api/admin/users')
+        setUsers(payload.users ?? [])
+      }
+    } catch (loadError) {
+      setError(loadError.message || '管理数据加载失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadData(tab)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab])
+
+  async function handleDeleteReview(review) {
+    if (!window.confirm(`删除「${review.giftName}」下的这条评价？`)) return
+    try {
+      await fetchJson(`/api/reviews/${review.id}`, { method: 'DELETE' })
+      setReviews((items) => items.filter((item) => item.id !== review.id))
+      onToast?.('评价已删除')
+    } catch (deleteError) {
+      onToast?.(deleteError.message || '删除评价失败')
+    }
+  }
+
+  async function handleResetPassword(target) {
+    const newPassword = window.prompt(
+      `为用户 ${target.username} 设置新密码（至少 8 位）`
+    )
+    if (!newPassword) return
+    if (newPassword.length < 8) {
+      onToast?.('密码至少需要 8 位')
+      return
+    }
+    try {
+      await fetchJson(`/api/admin/users/${target.id}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword })
+      })
+      onToast?.(`用户 ${target.username} 的密码已重置`)
+    } catch (resetError) {
+      onToast?.(resetError.message || '重置密码失败')
+    }
+  }
+
+  async function handleBan(target) {
+    const days = Number(banDays[target.id] ?? 7)
+    const reason = window.prompt(
+      `封禁用户 ${target.username} 的原因（可留空）`,
+      ''
+    )
+    if (reason === null) return
+    try {
+      await fetchJson(`/api/admin/users/${target.id}/ban`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days, reason })
+      })
+      await loadData('users')
+      onToast?.(`用户 ${target.username} 已封禁`)
+    } catch (banError) {
+      onToast?.(banError.message || '封禁失败')
+    }
+  }
+
+  async function handleUnban(target) {
+    if (!window.confirm(`解除用户 ${target.username} 的封禁？`)) return
+    try {
+      await fetchJson(`/api/admin/users/${target.id}/unban`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      })
+      await loadData('users')
+      onToast?.(`用户 ${target.username} 已解封`)
+    } catch (unbanError) {
+      onToast?.(unbanError.message || '解封失败')
+    }
+  }
+
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <section
+        className="account-modal admin-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="管理员面板"
+      >
+        <div className="account-modal-head">
+          <div>
+            <p className="section-kicker">ADMIN</p>
+            <h2>管理面板</h2>
+            <p className="account-modal-email">
+              管理员 {user.username} · {user.email}
+            </p>
+          </div>
+          <button
+            className="modal-close"
+            type="button"
+            onClick={onClose}
+            aria-label="关闭管理面板"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="admin-tabs" role="tablist" aria-label="管理分类">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'reviews'}
+            className={tab === 'reviews' ? 'is-active' : ''}
+            onClick={() => setTab('reviews')}
+          >
+            评价审核
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'users'}
+            className={tab === 'users' ? 'is-active' : ''}
+            onClick={() => setTab('users')}
+          >
+            用户管理
+          </button>
+        </div>
+
+        {error && (
+          <p className="form-message error" role="alert">
+            {error}
+          </p>
+        )}
+
+        {loading ? (
+          <p className="admin-loading">加载中…</p>
+        ) : tab === 'reviews' ? (
+          <div className="admin-review-list">
+            {reviews.length === 0 ? (
+              <p className="admin-loading">还没有评价。</p>
+            ) : (
+              reviews.map((review) => (
+                <article className="admin-review-row" key={review.id}>
+                  <div className="admin-review-head">
+                    <div>
+                      <strong>用户 {review.username}</strong>
+                      <span className="admin-review-email">{review.email}</span>
+                    </div>
+                    <span className="admin-review-date">
+                      {formatReviewDate(review.createdAt)}
+                    </span>
+                  </div>
+                  <p className="admin-review-gift">
+                    {review.giftName} · {review.rating} 星
+                  </p>
+                  {review.comment && (
+                    <p className="admin-review-body">{review.comment}</p>
+                  )}
+                  {review.imagePath && (
+                    <a
+                      href={review.imagePath}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="admin-review-image-link"
+                    >
+                      查看图片
+                    </a>
+                  )}
+                  <div className="admin-review-actions">
+                    <button
+                      type="button"
+                      className="review-delete"
+                      onClick={() => handleDeleteReview(review)}
+                    >
+                      删除违规评价
+                    </button>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        ) : (
+          <div className="admin-user-list">
+            {users.map((item) => (
+              <article className="admin-user-row" key={item.id}>
+                <div className="admin-user-info">
+                  <div className="admin-user-name">
+                    <strong>用户 {item.username}</strong>
+                    {item.isAdmin && (
+                      <span className="admin-badge">管理员</span>
+                    )}
+                    {item.isBanned && (
+                      <span className="admin-badge is-banned">已封禁</span>
+                    )}
+                  </div>
+                  <p>
+                    {item.email} · 评价 {item.reviewCount} 条
+                  </p>
+                  {item.isBanned && (
+                    <p className="admin-ban-note">
+                      {String(item.bannedUntil ?? '').startsWith('9999')
+                        ? '永久封禁'
+                        : `封禁至 ${formatReviewDate(item.bannedUntil)}`}
+                      {item.banReason ? ` · ${item.banReason}` : ''}
+                    </p>
+                  )}
+                </div>
+                {!item.isAdmin && (
+                  <div className="admin-user-actions">
+                    <button
+                      type="button"
+                      className="admin-small-button"
+                      onClick={() => handleResetPassword(item)}
+                    >
+                      重置密码
+                    </button>
+                    {item.isBanned ? (
+                      <button
+                        type="button"
+                        className="admin-small-button is-accent"
+                        onClick={() => handleUnban(item)}
+                      >
+                        解封
+                      </button>
+                    ) : (
+                      <>
+                        <select
+                          className="admin-ban-select"
+                          value={banDays[item.id] ?? 7}
+                          onChange={(event) =>
+                            setBanDays((previous) => ({
+                              ...previous,
+                              [item.id]: event.target.value
+                            }))
+                          }
+                          aria-label={`封禁 ${item.username} 的时长`}
+                        >
+                          <option value={1}>1 天</option>
+                          <option value={3}>3 天</option>
+                          <option value={7}>7 天</option>
+                          <option value={30}>30 天</option>
+                          <option value={90}>90 天</option>
+                          <option value={0}>永久</option>
+                        </select>
+                        <button
+                          type="button"
+                          className="admin-small-button is-danger"
+                          onClick={() => handleBan(item)}
+                        >
+                          封禁
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+
 function AuthLoading() {
   return (
     <div className="auth-shell">
@@ -1390,18 +1714,8 @@ function AuthScreen({ onAuthed, initialError }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [inviteCode, setInviteCode] = useState('')
-  const [inviteRequired, setInviteRequired] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-
-  useEffect(() => {
-    fetchJson('/api/auth/config')
-      .then((payload) => setInviteRequired(Boolean(payload.inviteRequired)))
-      .catch(() => {
-        // 配置读取失败时按开放注册处理，提交阶段仍会校验
-      })
-  }, [])
 
   function switchMode(nextMode) {
     setMode(nextMode)
@@ -1424,7 +1738,7 @@ function AuthScreen({ onAuthed, initialError }) {
       const payload = await fetchJson(`/api/auth/${mode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, inviteCode })
+        body: JSON.stringify({ email, password })
       })
       onAuthed(payload.user)
     } catch (authSubmitError) {
@@ -1470,13 +1784,13 @@ function AuthScreen({ onAuthed, initialError }) {
 
           <ul className="auth-features">
             <li>生日倒计时与性别称呼</li>
-            <li>标签交集筛选与价格区间</li>
+            <li>兴趣方向与场景筛选</li>
             <li>想送 / 已送仓库与恢复</li>
             <li>贝叶斯评分与图文评价</li>
           </ul>
 
           <p className="auth-privacy">
-            登录仅需要邮箱和密码，不发送验证邮件，也不接入第三方登录。
+            登录仅需要邮箱和密码，不发验证邮件；用户名自动分配，忘记密码请联系管理员重置。
           </p>
         </section>
 
@@ -1506,7 +1820,7 @@ function AuthScreen({ onAuthed, initialError }) {
           <p className="auth-card-hint">
             {mode === 'login'
               ? '用邮箱和密码进入你的生日与礼物记录。'
-              : '邮箱只作为登录名使用，不会发送邮件。'}
+              : '邮箱作为登录名，注册后自动分配用户名。'}
           </p>
 
           <form className="auth-form" onSubmit={handleSubmit}>
@@ -1554,20 +1868,6 @@ function AuthScreen({ onAuthed, initialError }) {
               </label>
             )}
 
-            {mode === 'register' && inviteRequired && (
-              <label className="auth-field">
-                <span>邀请码</span>
-                <input
-                  type="text"
-                  value={inviteCode}
-                  required
-                  autoComplete="off"
-                  placeholder="向管理员获取邀请码"
-                  onChange={(event) => setInviteCode(event.target.value)}
-                />
-              </label>
-            )}
-
             {(error || initialError) && (
               <p className="form-message error auth-error" role="alert">
                 {error || initialError}
@@ -1591,9 +1891,7 @@ function AuthScreen({ onAuthed, initialError }) {
 
           <p className="auth-card-note">
             {mode === 'register'
-              ? inviteRequired
-                ? '当前部署开启了邀请码注册，请向管理员获取邀请码。'
-                : '如果是本机第一个账号，已有的好友、仓库和评价会自动归入这个账号。'
+              ? '注册后自动分配 4 位用户名（0001-9999）；忘记密码请联系管理员重置。'
               : '还没有账号？切换到“注册”，用邮箱创建一个。'}
           </p>
         </section>

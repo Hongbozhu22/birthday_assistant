@@ -21,10 +21,14 @@ import {
   deleteAccount,
   destroySession,
   getSessionUser,
+  listAdminUsers,
   loginUser,
   recordLoginFailure,
   registerUser,
-  setSessionCookie
+  setSessionCookie,
+  adminBanUser,
+  adminResetPassword,
+  adminUnbanUser
 } from './auth.js'
 
 const IMAGE_MIME_TYPES = {
@@ -295,9 +299,7 @@ export function createApiMiddleware() {
           methodNotAllowed(res, ['GET'])
           return
         }
-        sendJson(res, 200, {
-          inviteRequired: Boolean(process.env.INVITE_CODE)
-        })
+        sendJson(res, 200, { inviteRequired: false })
         return
       }
 
@@ -307,13 +309,6 @@ export function createApiMiddleware() {
           return
         }
         const body = await readJsonBody(req)
-        if (
-          process.env.INVITE_CODE &&
-          String(body?.inviteCode ?? '') !== process.env.INVITE_CODE
-        ) {
-          sendJson(res, 403, { error: '邀请码不正确或已过期' })
-          return
-        }
         const user = await registerUser(db, body?.email, body?.password)
         const session = createSession(db, user.id)
         setSessionCookie(req, res, session.token, session.expiresAt)
@@ -385,6 +380,108 @@ export function createApiMiddleware() {
         const result = await deleteAccount(db, currentUser.id, body?.password)
         clearSessionCookie(req, res)
         sendJson(res, 200, { ok: true, ...result })
+        return
+      }
+
+      if (url.pathname.startsWith('/api/admin/')) {
+        if (!currentUser.isAdmin) {
+          sendJson(res, 403, { error: '只有管理员可以访问' })
+          return
+        }
+      }
+
+      if (url.pathname === '/api/admin/users') {
+        if (req.method !== 'GET') {
+          methodNotAllowed(res, ['GET'])
+          return
+        }
+        sendJson(res, 200, { users: listAdminUsers(db) })
+        return
+      }
+
+      if (url.pathname === '/api/admin/reviews') {
+        if (req.method !== 'GET') {
+          methodNotAllowed(res, ['GET'])
+          return
+        }
+        const rows = db
+          .prepare(
+            `SELECT r.id, r.gift_id, r.rating, r.comment, r.image_path,
+                    r.created_at, u.id AS user_id, u.username, u.email,
+                    g.name AS gift_name
+               FROM reviews r
+               JOIN users u ON u.id = r.user_id
+               JOIN gifts g ON g.id = r.gift_id
+              ORDER BY datetime(r.created_at) DESC, r.id DESC
+              LIMIT 200`
+          )
+          .all()
+
+        sendJson(res, 200, {
+          reviews: rows.map((row) => ({
+            id: row.id,
+            giftId: row.gift_id,
+            giftName: row.gift_name,
+            rating: row.rating,
+            comment: row.comment,
+            imagePath: row.image_path,
+            createdAt: row.created_at,
+            userId: row.user_id,
+            username: row.username,
+            email: row.email
+          }))
+        })
+        return
+      }
+
+      const adminResetMatch = url.pathname.match(
+        /^\/api\/admin\/users\/(\d+)\/reset-password$/
+      )
+      if (adminResetMatch) {
+        if (req.method !== 'POST') {
+          methodNotAllowed(res, ['POST'])
+          return
+        }
+        const body = await readJsonBody(req)
+        await adminResetPassword(
+          db,
+          Number(adminResetMatch[1]),
+          body?.newPassword,
+          currentUser
+        )
+        sendJson(res, 200, { ok: true })
+        return
+      }
+
+      const adminBanMatch = url.pathname.match(
+        /^\/api\/admin\/users\/(\d+)\/ban$/
+      )
+      if (adminBanMatch) {
+        if (req.method !== 'POST') {
+          methodNotAllowed(res, ['POST'])
+          return
+        }
+        const body = await readJsonBody(req)
+        const result = adminBanUser(
+          db,
+          Number(adminBanMatch[1]),
+          body,
+          currentUser
+        )
+        sendJson(res, 200, { ok: true, ...result })
+        return
+      }
+
+      const adminUnbanMatch = url.pathname.match(
+        /^\/api\/admin\/users\/(\d+)\/unban$/
+      )
+      if (adminUnbanMatch) {
+        if (req.method !== 'POST') {
+          methodNotAllowed(res, ['POST'])
+          return
+        }
+        adminUnbanUser(db, Number(adminUnbanMatch[1]), currentUser)
+        sendJson(res, 200, { ok: true })
         return
       }
 
